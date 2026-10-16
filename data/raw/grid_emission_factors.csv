@@ -1,0 +1,9 @@
+reporting_year,factor_kgco2_per_kwh,status,source,source_url,checked_on
+2017,0.421,PUBLISHED,EMA data.gov.sg historical table; snapshot last updated 2024-06-06; Average Operating Margin,https://data.gov.sg/datasets/d_3de362b580b2dd2fd50cc1006d4edd4f/view,2026-10-17
+2018,0.4206,PUBLISHED,EMA data.gov.sg historical table; snapshot last updated 2024-06-06; Average Operating Margin,https://data.gov.sg/datasets/d_3de362b580b2dd2fd50cc1006d4edd4f/view,2026-10-17
+2019,0.4085,PUBLISHED,EMA data.gov.sg historical table; snapshot last updated 2024-06-06; Average Operating Margin,https://data.gov.sg/datasets/d_3de362b580b2dd2fd50cc1006d4edd4f/view,2026-10-17
+2020,0.408,PUBLISHED,EMA data.gov.sg historical table; snapshot last updated 2024-06-06; Average Operating Margin,https://data.gov.sg/datasets/d_3de362b580b2dd2fd50cc1006d4edd4f/view,2026-10-17
+2022,0.4168,PUBLISHED,"NEA FY2023 Annual and Sustainability Report footnote 31, explicitly citing EMA 2022 GEF",https://www.nea.gov.sg/docs/default-source/asr/fy2023/nea-asr-fy23.pdf,2026-10-17
+2023,0.412,PUBLISHED,EMA Singapore Energy Statistics 2024/2025 Ch. 2,https://www.ema.gov.sg/resources/singapore-energy-statistics/chapter2,2026-10-17
+2024,0.402,PUBLISHED,EMA Singapore Energy Statistics 2025 Ch. 2,https://www.ema.gov.sg/resources/singapore-energy-statistics/chapter2,2026-10-17
+2025,0.402,PROVISIONAL_CARRY_FORWARD,Provisional carry-forward of EMA 2024 published factor pending 2026 release,https://www.ema.gov.sg/resources/singapore-energy-statistics/chapter2,2026-10-17
