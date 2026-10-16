@@ -1,0 +1,4 @@
+entity_id,entity_name,property_type,reporting_year,input_floor_area,input_floor_area_unit,input_electricity_kwh,input_natural_gas_kwh,input_diesel_litres,ema_grid_ef_kgco2e_per_kwh,gas_ef_kgco2e_per_kwh,diesel_ef_kgco2e_per_litre,expected_gfa_sqm,expected_scope_1_tco2e,expected_scope_2_tco2e,expected_total_energy_kwh,expected_eui_mei_kwh_m2_yr,expected_carbon_intensity_kgco2e_m2_yr
+TC2_AUDIT_01,Audit Verification Office Tower A,OFFICE,2025,50000.0,sqm,6250000.0,0.0,1500.0,0.412,0.184,2.68,50000.0,4.02,2575.0,6265000.0,125.3,51.5804
+TC2_AUDIT_02,Audit Verification Retail Mall B,RETAIL,2025,322917.312,sqft,11400000.0,450000.0,2500.0,0.412,0.184,2.68,30000.0,89.5,4696.8,11875000.0,395.833333,159.543333
+TC2_AUDIT_03,Audit Verification Hotel C,HOTEL,2025,25000.0,sqm,5500000.0,620000.0,4000.0,0.412,0.184,2.68,25000.0,124.8,2266.0,6160000.0,246.4,95.632
