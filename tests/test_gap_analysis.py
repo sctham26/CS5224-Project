@@ -8,6 +8,8 @@ from gap_analysis import run_gap_analysis
 DATA = "data/synthetic_esg.csv"
 METRICS = "config/metrics.yaml"
 RULES = "config/peer_rules.yaml"
+EUI = "ENERGY_INTENSITY_EUI"
+RENEW = "RENEWABLE_SHARE"
 
 
 @pytest.fixture(scope="module")
@@ -30,18 +32,21 @@ def test_asset_and_portfolio_not_mixed(result):
 
 
 def test_energy_gap_computes_against_peers(result):
-    entry = next(m for m in result["metrics"] if m["metric"] == "energy_intensity")
+    entry = next(m for m in result["metrics"] if m["metric"] == EUI)
     assert entry["peer_count"] >= 5
     assert entry["applied_fallback_rule"]
     assert entry["value"] == pytest.approx(118.0)
-    # lower_is_better: 118 < peer median 125 -> negative gap (already better)
+    # lower_is_better: 118 < peer median -> negative gap (already better)
     assert entry["gap_to_median"] < 0
-    assert entry["unit"] == "kWh/m2/year"
+    assert entry["unit"] == "kWh/m2/yr"
 
 
-def test_higher_is_better_gap_sign(result):
-    entry = next(m for m in result["metrics"] if m["metric"] == "renewable_share")
-    # renewable_share = 18%, median around 25% -> need +gap to reach median
+def test_higher_is_better_gap_sign():
+    # A007 renewable_share = 5%, peer median = 18% -> needs +13 to reach median.
+    result = run_gap_analysis(
+        data_path=DATA, metrics_path=METRICS, peer_rules_path=RULES, entity_id="A007"
+    )
+    entry = next(m for m in result["metrics"] if m["metric"] == RENEW)
     assert entry["gap_to_median"] > 0
 
 
@@ -64,14 +69,23 @@ def test_output_contract_matches_example(result, tmp_path):
     }
 
 
-def test_gap_summary_flags_performance_gap(result):
-    # A001 renewable_share = 18% -> ~14th percentile (< 40 threshold) -> gap.
-    assert "renewable_share" in result["summary"]["performance_gaps"]
-    assert result["summary"]["disclosure_gaps"] == []
+def test_gap_summary_flags_performance_gap():
+    # A007 underperforms peers on renewable_share (14th percentile < 40 threshold).
+    result = run_gap_analysis(
+        data_path=DATA, metrics_path=METRICS, peer_rules_path=RULES, entity_id="A007"
+    )
+    assert RENEW in result["summary"]["performance_gaps"]
+    # The dictionary declares more metrics than A007 discloses -> disclosure gaps.
+    assert all(
+        g in result["summary"]["disclosure_gaps"] for g in ("SCOPE_1_EMISSIONS", "GREEN_CERT_LEVEL")
+    )
 
 
-def test_performance_gap_entry_fields(result):
-    entry = next(m for m in result["metrics"] if m["metric"] == "renewable_share")
+def test_performance_gap_entry_fields():
+    result = run_gap_analysis(
+        data_path=DATA, metrics_path=METRICS, peer_rules_path=RULES, entity_id="A007"
+    )
+    entry = next(m for m in result["metrics"] if m["metric"] == RENEW)
     assert entry["percentile"] < entry["gap_percentile_threshold"]
     assert entry["gap_flag"] is True
     assert entry["gap_type"] == "performance_gap"
@@ -79,13 +93,13 @@ def test_performance_gap_entry_fields(result):
 
 
 def test_no_gap_flag_when_above_threshold(result):
-    entry = next(m for m in result["metrics"] if m["metric"] == "energy_intensity")
+    entry = next(m for m in result["metrics"] if m["metric"] == EUI)
     assert entry["gap_flag"] is False
     assert entry["gap_type"] is None
 
 
 def test_source_carried_into_output(result):
-    entry = next(m for m in result["metrics"] if m["metric"] == "energy_intensity")
+    entry = next(m for m in result["metrics"] if m["metric"] == EUI)
     assert entry["source"] == "synthetic-dataset"
 
 
@@ -94,16 +108,16 @@ def test_incomparable_metric_is_disclosure_gap():
     result = run_gap_analysis(
         data_path=DATA, metrics_path=METRICS, peer_rules_path=RULES, entity_id="A005"
     )
-    entry = next(m for m in result["metrics"] if m["metric"] == "renewable_share")
+    entry = next(m for m in result["metrics"] if m["metric"] == RENEW)
     assert entry["status"] == "unavailable"
     assert entry["comparability_status"] == "incompatible"
     assert entry["reason"] == "incomparable_unit"
     assert entry["gap_type"] == "disclosure_gap"
-    assert "renewable_share" in result["summary"]["disclosure_gaps"]
+    assert RENEW in result["summary"]["disclosure_gaps"]
 
 
 def test_undisclosed_metric_is_disclosure_gap():
-    # A003 (2023) discloses only 3 of 5 declared metrics -> rest are not_disclosed.
+    # A003 (2023) discloses only a subset of declared metrics -> rest not_disclosed.
     result = run_gap_analysis(
         data_path=DATA,
         metrics_path=METRICS,

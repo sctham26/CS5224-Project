@@ -10,7 +10,47 @@ All paths are relative to `spip-analytics/`.
 
 ## 1. Outbound (callers)
 
-### `run_gap_analysis(...)`
+### 1a. HTTP API (for the React dashboard)
+
+```powershell
+python -m uvicorn api:app --app-dir src --port 8000
+```
+
+| Method & path | Params | Purpose |
+|---|---|---|
+| `GET /health` | — | Liveness probe |
+| `GET /analysis/{entity_id}` | `scope=asset\|portfolio`, `reporting_year` | Serve `data/synthetic_esg.csv` (or `SPIP_DATA`) in the team's output contract |
+| `POST /analyze` | multipart `file`, `entity_id`, `reporting_year`, `scope` | Analyse an uploaded CSV (team or engine format) in the same contract |
+
+Errors: `404` entity not found, `422` bad scope / unknown `metric_code` / missing
+`entity_id`. CORS is open (`*`) for the Vite dev server. Response body always matches
+`schemas/analytics_output_contract.json` (PR #1): `entity_id`, `entity_name`,
+`tenant_id`, `reporting_year` (int), `peer_cohort{property_type, region, sample_size_n,
+fallback_applied, fallback_reason}`, `metrics[]` with `comparability_status` ∈
+`COMPARABLE / UNIT_CONVERTED / BOUNDARY_MISMATCH / INCOMPLETE_DATA`, `benchmark{peer_median,
+relative_rank, empirical_percentile}`, `gap_analysis{gap_type, is_flagged,
+threshold_percentile, delta_to_peer_median?, recommendation_signal}`.
+
+### 1b. `analyse_to_contract(...)` (same output, as a library)
+
+```python
+from contract import analyse_to_contract   # src/ must be on sys.path
+
+out = analyse_to_contract(
+    data_path="tests/fixtures_their.csv",   # team CSV (metric_code/...) or engine CSV
+    entity_id="TGT_BUILD",
+    metrics_path="config/metrics.yaml",
+    peer_rules_path="config/peer_rules.yaml",
+    reporting_year=2025,                    # optional; int or str
+    scope="asset",                          # asset (default) | portfolio
+)
+```
+
+Raises `ContractInputError` (unknown `metric_code`) and `EntityNotFound` (no such
+entity/period/scope). Pure boundary adapter — it delegates to `run_gap_analysis` and
+projects the result onto the team's contract.
+
+### 1c. `run_gap_analysis(...)` (engine-internal contract)
 
 End-to-end: load CSV → partition by scope → harmonise units → select peers → percentile
 benchmark → return JSON.
@@ -53,8 +93,8 @@ Raises `ValueError` if the entity is absent from that scope.
     "gap_percentile_threshold_source": "config/metrics.yaml"
   },
   "summary": {
-    "performance_gaps": ["renewable_share"],   // comparable metric below threshold
-    "disclosure_gaps":  ["water_intensity"]    // not disclosed / incomparable
+    "performance_gaps": ["RENEWABLE_SHARE"],     // comparable metric below threshold
+    "disclosure_gaps":  ["WATER_INTENSITY"]      // not disclosed / incomparable
   },
   "metrics": [ /* one object per metric, one of three shapes below */ ]
 }
@@ -93,6 +133,22 @@ Semantics:
 
 ### 2.1 Data: long-format ESG CSV (one row = entity/period/metric)
 
+Two accepted inputs — **their format** (auto-detected when `metric_code`,
+`reporting_year`, `standardised_value`, `reporting_scope` columns all exist) is
+converted internally to the engine format below:
+
+| Their column (team CSV) | Maps to engine column | Notes |
+|---|---|---|
+| `entity_id` | `entity_id` | |
+| `reporting_scope` (`ASSET`/`PORTFOLIO`) | `scope` (lowercased) | |
+| `reporting_year` (int) | `reporting_period` (str) | exact match, `"2025"` |
+| `metric_code` | `metric` | must be in `metrics.yaml`, else `422` |
+| `standardised_value` + `canonical_unit` | `value` + `unit` | already converted upstream |
+| `comparability_status` | — | `BOUNDARY_MISMATCH`/`ANOMALY_FLAGGED`/null value → excluded (reported as disclosure gap); `UNIT_CONVERTED` → status `UNIT_CONVERTED` |
+| `property_type`, `region`, `entity_name`, `tenant_id`, `source_reference` | + carry-over | drive `peer_cohort` / identity fields |
+
+Engine format (also accepted directly):
+
 | Column | Required | Type | Notes |
 |---|---|---|---|
 | `entity_id` | yes | str | Unique entity ID |
@@ -115,15 +171,22 @@ accepted units and conversion factors, gap threshold.
 
 ```yaml
 metrics:
-  energy_intensity:
-    canonical_unit: kWh/m2/year
+  ENERGY_INTENSITY_EUI:
+    canonical_unit: kWh/m2/yr
     direction: lower_is_better        # lower_is_better | higher_is_better
     scopes: [asset, portfolio]
     gap_percentile_threshold: 40      # below this percentile -> performance_gap
     factors:                          # multiplier: reported unit -> canonical
-      kWh/m2/year: 1.0
-      MWh/m2/year: 1000.0
+      kWh/m2/yr: 1.0
+      MWh/m2/yr: 1000.0
 ```
+
+Metric codes follow the team's `docs/metric_dictionary.csv` (PR #1): nine declared
+metrics (`ENERGY_INTENSITY_EUI`, `CARBON_INTENSITY_SCOPE2`, `WATER_INTENSITY`,
+`GREEN_CERT_LEVEL`, `SCOPE_1_EMISSIONS`, `SCOPE_2_EMISSIONS`,
+`CARBON_INTENSITY_SCOPE1_2`, `ENERGY_INTENSITY_REPORTED_TOTAL`,
+`TOTAL_ENERGY_INTENSITY`) plus `WASTE_DIVERSION_RATE` / `RENEWABLE_SHARE` from the
+synthetic dataset. An unknown code in an uploaded CSV → `422 ContractInputError`.
 
 ### 2.3 Config: `config/peer_rules.yaml` — peer rules
 
@@ -132,13 +195,13 @@ metrics:
 
 ```yaml
 min_peer_size: 5                      # excluding the target itself
-fallback_rules:
+fallback_rules:                       # top to bottom; region relaxed first (team PR #1)
   - name: same_property_type_and_region
     match: [property_type, region]    # fields: property_type / region / certification
-  - name: same_property_type
-    match: [property_type]
   - name: same_region
     match: [region]
+  - name: same_property_type
+    match: [property_type]
   - name: same_scope_all
     match: []                         # fallback: all in scope
 ```
@@ -152,6 +215,11 @@ metric availability, and unit convertible to canonical. Otherwise it is excluded
 
 ## 3. Integration boundary
 
-- Pure library, no HTTP/CLI service; callers import `run_gap_analysis` directly.
-- Integration artefact is the JSON contract in §1 (example: `examples/output.json`).
-- Not integrated: real benchmark data, dashboard/API, AI assistant.
+- HTTP layer: `src/api.py` (FastAPI) — the only process a caller runs; CORS open for
+  the Vite dashboard (`GET /analysis/{entity_id}`).
+- Library layer: `analyse_to_contract` (team contract) or `run_gap_analysis` (engine
+  contract, richer provenance).
+- Integration artefacts: team-shaped response from the API; engine example in
+  `examples/output.json`.
+- Not integrated: the team's real datasets (`public_esg_baseline.csv`), the React
+  dashboard still on hardcoded data, AI assistant.

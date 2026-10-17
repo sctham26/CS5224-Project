@@ -9,6 +9,10 @@ from metrics import MetricRegistry
 from schemas import ReportingScope
 
 DATA = "data/synthetic_esg.csv"
+EUI = "ENERGY_INTENSITY_EUI"
+CARBON = "CARBON_INTENSITY_SCOPE2"
+RENEW = "RENEWABLE_SHARE"
+WASTE = "WASTE_DIVERSION_RATE"
 
 
 @pytest.fixture(scope="module")
@@ -46,26 +50,26 @@ def test_harmonisation_converts_mixed_units(records, registry):
     a001 = next(r for r in h if r.entity_id == "A001")
     a004 = next(r for r in h if r.entity_id == "A004" and r.reporting_period == "2024")
     # A004 reported energy in MWh -> 0.125 * 1000 = 125 kWh
-    assert a004.metrics["energy_intensity"].value == pytest.approx(125.0)
-    assert a004.metrics["energy_intensity"].source_unit == "MWh/m2/year"
-    assert a004.metrics["energy_intensity"].conversion_factor == pytest.approx(1000.0)
+    assert a004.metrics[EUI].value == pytest.approx(125.0)
+    assert a004.metrics[EUI].source_unit == "MWh/m2/year"
+    assert a004.metrics[EUI].conversion_factor == pytest.approx(1000.0)
     # A004 emissions in tonnes -> kg
-    assert a004.metrics["emissions_intensity"].value == pytest.approx(24.5)
+    assert a004.metrics[CARBON].value == pytest.approx(24.5)
     # A001 reported fraction waste -> percent
-    assert a001.metrics["waste_diversion_rate"].value == pytest.approx(62.0)
+    assert a001.metrics[WASTE].value == pytest.approx(62.0)
 
 
 def test_harmonisation_records_unsupported_unit(registry):
     h = harmonise_records(load_records(DATA), registry)
     a005 = next(r for r in h if r.entity_id == "A005")
-    assert "renewable_share" not in a005.metrics
-    assert a005.dropped["renewable_share"] == "unsupported_unit"
+    assert RENEW not in a005.metrics
+    assert a005.dropped[RENEW] == "unsupported_unit"
 
 
 def test_harmonisation_carries_direction_and_unit(records, registry):
     h = harmonise_records(records, registry)
     a001 = next(r for r in h if r.entity_id == "A001")
-    m = a001.metrics["renewable_share"]
+    m = a001.metrics[RENEW]
     assert m.direction == "higher_is_better"
     assert m.canonical_unit == "percent"
 
@@ -73,8 +77,8 @@ def test_harmonisation_carries_direction_and_unit(records, registry):
 def test_harmonisation_carries_source(records, registry):
     h = harmonise_records(records, registry)
     a001 = next(r for r in h if r.entity_id == "A001")
-    assert a001.metrics["energy_intensity"].source == "synthetic-dataset"
+    assert a001.metrics[EUI].source == "synthetic-dataset"
     a003_2023 = next(
         r for r in h if r.entity_id == "A003" and r.reporting_period == "2023"
     )
-    assert a003_2023.metrics["energy_intensity"].source == "manual-curation"
+    assert a003_2023.metrics[EUI].source == "manual-curation"

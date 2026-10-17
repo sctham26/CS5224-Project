@@ -34,6 +34,14 @@ class HarmonisedRecord:
     dropped: dict[str, str]
 
 
+def _opt(value) -> Optional[str]:
+    """Normalize a possibly-missing CSV cell to str | None (NaN is not falsy)."""
+    if value is None or pd.isna(value):
+        return None
+    s = str(value).strip()
+    return s or None
+
+
 def load_records(path: str | Path) -> list[ESGRecord]:
     """Parse the long-format CSV into one ESGRecord per entity/period."""
     merged: dict[tuple, ESGRecord] = {}
@@ -43,7 +51,7 @@ def load_records(path: str | Path) -> list[ESGRecord]:
         obs = MetricObservation(
             value=float(row["value"]),
             unit=row["unit"],
-            source=row.get("source") or None,
+            source=_opt(row.get("source")),
         )
         if key in merged:
             merged[key].metrics[row["metric"]] = obs
@@ -52,9 +60,9 @@ def load_records(path: str | Path) -> list[ESGRecord]:
                 entity_id=row["entity_id"],
                 scope=ReportingScope(row["scope"]),
                 reporting_period=str(row["reporting_period"]),
-                region=row["region"] or None,
-                property_type=row["property_type"] or None,
-                certification=row["certification"] or None,
+                region=_opt(row["region"]),
+                property_type=_opt(row["property_type"]),
+                certification=_opt(row["certification"]),
                 metrics={row["metric"]: obs},
             )
     return list(merged.values())

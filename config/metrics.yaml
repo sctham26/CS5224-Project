@@ -1,40 +1,106 @@
-# Metric registry — all dataset-specific assumptions are configurable here.
-# `canonical_unit` is the target unit for harmonisation; `factors` map any
-# accepted reporting unit to a multiplier against the canonical unit.
-# `gap_percentile_threshold` flags a performance gap when a comparable value
-# falls below that empirical percentile (direction-aware: 100 = best).
+# Metric registry — the nine metrics, canonical units and direction follow the
+# team's docs/metric_dictionary.csv (PR #1) as the source of truth.
+# `factors` map any accepted reporting unit to a multiplier against the
+# canonical unit. `gap_percentile_threshold` flags a performance gap when a
+# comparable value falls below that empirical percentile (100 = best).
 
 metrics:
-  energy_intensity:
-    canonical_unit: kWh/m2/year
+  ENERGY_INTENSITY_EUI:
+    canonical_unit: kWh/m2/yr
     direction: lower_is_better
     scopes: [asset, portfolio]
     gap_percentile_threshold: 40
     factors:
+      kWh/m2/yr: 1.0
       kWh/m2/year: 1.0
+      MWh/m2/yr: 1000.0
       MWh/m2/year: 1000.0
+      GJ/m2/yr: 277.777778
+      kWh/sqft/yr: 10.7639104
       kbtu/m2/year: 0.29307107
 
-  emissions_intensity:
-    canonical_unit: kgCO2e/m2/year
+  ENERGY_INTENSITY_REPORTED_TOTAL:
+    canonical_unit: kWh/m2/yr
     direction: lower_is_better
-    scopes: [asset, portfolio]
+    scopes: [portfolio]
     gap_percentile_threshold: 40
     factors:
-      kgCO2e/m2/year: 1.0
-      tCO2e/m2/year: 1000.0
-      gCO2e/m2/year: 0.001
+      kWh/m2/yr: 1.0
+      GJ/m2/yr: 277.777778
 
-  water_intensity:
-    canonical_unit: m3/m2/year
+  CARBON_INTENSITY_SCOPE2:
+    canonical_unit: kgCO2e/m2/yr
     direction: lower_is_better
     scopes: [asset, portfolio]
     gap_percentile_threshold: 40
     factors:
+      kgCO2e/m2/yr: 1.0
+      kgCO2e/m2/year: 1.0
+      tCO2e/m2/yr: 1000.0
+      tCO2e/m2/year: 1000.0
+      gCO2e/m2/yr: 0.001
+
+  GREEN_CERT_LEVEL:
+    canonical_unit: ORDINAL_0_4
+    direction: higher_is_better
+    scopes: [asset]
+    gap_percentile_threshold: 40
+    factors:
+      rating: 1.0
+
+  WATER_INTENSITY:
+    canonical_unit: m3/m2/yr
+    direction: lower_is_better
+    scopes: [asset, portfolio]
+    gap_percentile_threshold: 40
+    factors:
+      m3/m2/yr: 1.0
       m3/m2/year: 1.0
+      L/m2/yr: 0.001
       liter/m2/year: 0.001
 
-  waste_diversion_rate:
+  SCOPE_1_EMISSIONS:
+    canonical_unit: tCO2e
+    direction: lower_is_better
+    scopes: [asset, portfolio]
+    gap_percentile_threshold: 40
+    factors:
+      tCO2e: 1.0
+      kgCO2e: 0.001
+      ktCO2e: 1000.0
+
+  SCOPE_2_EMISSIONS:
+    canonical_unit: tCO2e
+    direction: lower_is_better
+    scopes: [asset, portfolio]
+    gap_percentile_threshold: 40
+    factors:
+      tCO2e: 1.0
+      kgCO2e: 0.001
+      ktCO2e: 1000.0
+
+  CARBON_INTENSITY_SCOPE1_2:
+    canonical_unit: kgCO2e/m2/yr
+    direction: lower_is_better
+    scopes: [asset, portfolio]
+    gap_percentile_threshold: 40
+    factors:
+      kgCO2e/m2/yr: 1.0
+      tCO2e/m2/yr: 1000.0
+      gCO2e/m2/yr: 0.001
+
+  TOTAL_ENERGY_INTENSITY:
+    canonical_unit: kWh/m2/yr
+    direction: lower_is_better
+    scopes: [asset, portfolio]
+    gap_percentile_threshold: 40
+    factors:
+      kWh/m2/yr: 1.0
+      MWh/m2/yr: 1000.0
+      GJ/m2/yr: 277.777778
+
+  # Retained for the legacy synthetic dataset (pre-dictionary metric names).
+  WASTE_DIVERSION_RATE:
     canonical_unit: percent
     direction: higher_is_better
     scopes: [asset, portfolio]
@@ -43,7 +109,7 @@ metrics:
       percent: 1.0
       fraction: 100.0
 
-  renewable_share:
+  RENEWABLE_SHARE:
     canonical_unit: percent
     direction: higher_is_better
     scopes: [asset, portfolio]
