@@ -1,0 +1,224 @@
+{
+  "engine_version": "0.1.0",
+  "entity_id": "A001",
+  "scope": "asset",
+  "reporting_period": "2024",
+  "provenance": {
+    "data_source": "data/synthetic_esg.csv",
+    "metrics_config": "config/metrics.yaml",
+    "peer_rules": "config/peer_rules.yaml",
+    "min_peer_size": 5,
+    "fallback_rules": [
+      "same_property_type_and_region",
+      "same_property_type",
+      "same_region",
+      "same_scope_all"
+    ],
+    "gap_percentile_threshold_source": "config/metrics.yaml"
+  },
+  "summary": {
+    "performance_gaps": [
+      "renewable_share"
+    ],
+    "disclosure_gaps": []
+  },
+  "metrics": [
+    {
+      "metric": "emissions_intensity",
+      "status": "available",
+      "comparability_status": "comparable",
+      "reason": null,
+      "value": 22.5,
+      "unit": "kgCO2e/m2/year",
+      "source_unit": "kgCO2e/m2/year",
+      "conversion_factor": 1.0,
+      "source": "synthetic-dataset",
+      "direction": "lower_is_better",
+      "peer_count": 5,
+      "applied_fallback_rule": "same_property_type_and_region",
+      "compatibility": {
+        "scope": "asset",
+        "reporting_period": "2024",
+        "unit": "kgCO2e/m2/year"
+      },
+      "peer_ids": [
+        "A002",
+        "A003",
+        "A004",
+        "A005",
+        "A006"
+      ],
+      "benchmark": {
+        "count": 5,
+        "median": 24.5,
+        "mean": 24.72,
+        "min": 19.8,
+        "max": 31.2
+      },
+      "rank": 3,
+      "percentile": 60.0,
+      "gap_percentile_threshold": 40.0,
+      "gap_to_median": -2.0,
+      "gap_flag": false,
+      "gap_type": null
+    },
+    {
+      "metric": "energy_intensity",
+      "status": "available",
+      "comparability_status": "comparable",
+      "reason": null,
+      "value": 118.0,
+      "unit": "kWh/m2/year",
+      "source_unit": "kWh/m2/year",
+      "conversion_factor": 1.0,
+      "source": "synthetic-dataset",
+      "direction": "lower_is_better",
+      "peer_count": 5,
+      "applied_fallback_rule": "same_property_type_and_region",
+      "compatibility": {
+        "scope": "asset",
+        "reporting_period": "2024",
+        "unit": "kWh/m2/year"
+      },
+      "peer_ids": [
+        "A002",
+        "A003",
+        "A004",
+        "A005",
+        "A006"
+      ],
+      "benchmark": {
+        "count": 5,
+        "median": 125.0,
+        "mean": 122.4,
+        "min": 101.0,
+        "max": 145.0
+      },
+      "rank": 3,
+      "percentile": 60.0,
+      "gap_percentile_threshold": 40.0,
+      "gap_to_median": -7.0,
+      "gap_flag": false,
+      "gap_type": null
+    },
+    {
+      "metric": "renewable_share",
+      "status": "available",
+      "comparability_status": "comparable",
+      "reason": null,
+      "value": 18.0,
+      "unit": "percent",
+      "source_unit": "fraction",
+      "conversion_factor": 100.0,
+      "source": "synthetic-dataset",
+      "direction": "higher_is_better",
+      "peer_count": 7,
+      "applied_fallback_rule": "same_property_type",
+      "compatibility": {
+        "scope": "asset",
+        "reporting_period": "2024",
+        "unit": "percent"
+      },
+      "peer_ids": [
+        "A002",
+        "A003",
+        "A004",
+        "A006",
+        "A010",
+        "A011",
+        "A012"
+      ],
+      "benchmark": {
+        "count": 7,
+        "median": 28.0,
+        "mean": 27.714285714285715,
+        "min": 12.0,
+        "max": 42.0
+      },
+      "rank": 7,
+      "percentile": 14.29,
+      "gap_percentile_threshold": 40.0,
+      "gap_to_median": 10.0,
+      "gap_flag": true,
+      "gap_type": "performance_gap"
+    },
+    {
+      "metric": "waste_diversion_rate",
+      "status": "available",
+      "comparability_status": "comparable",
+      "reason": null,
+      "value": 62.0,
+      "unit": "percent",
+      "source_unit": "fraction",
+      "conversion_factor": 100.0,
+      "source": "synthetic-dataset",
+      "direction": "higher_is_better",
+      "peer_count": 5,
+      "applied_fallback_rule": "same_property_type_and_region",
+      "compatibility": {
+        "scope": "asset",
+        "reporting_period": "2024",
+        "unit": "percent"
+      },
+      "peer_ids": [
+        "A002",
+        "A003",
+        "A004",
+        "A005",
+        "A006"
+      ],
+      "benchmark": {
+        "count": 5,
+        "median": 57.99999999999999,
+        "mean": 59.4,
+        "min": 48.0,
+        "max": 70.0
+      },
+      "rank": 3,
+      "percentile": 60.0,
+      "gap_percentile_threshold": 40.0,
+      "gap_to_median": -4.0,
+      "gap_flag": false,
+      "gap_type": null
+    },
+    {
+      "metric": "water_intensity",
+      "status": "available",
+      "comparability_status": "comparable",
+      "reason": null,
+      "value": 1.35,
+      "unit": "m3/m2/year",
+      "source_unit": "m3/m2/year",
+      "conversion_factor": 1.0,
+      "source": "synthetic-dataset",
+      "direction": "lower_is_better",
+      "peer_count": 5,
+      "applied_fallback_rule": "same_property_type_and_region",
+      "compatibility": {
+        "scope": "asset",
+        "reporting_period": "2024",
+        "unit": "m3/m2/year"
+      },
+      "peer_ids": [
+        "A002",
+        "A003",
+        "A004",
+        "A005",
+        "A006"
+      ],
+      "benchmark": {
+        "count": 5,
+        "median": 1.45,
+        "mean": 1.432,
+        "min": 1.21,
+        "max": 1.7
+      },
+      "rank": 3,
+      "percentile": 60.0,
+      "gap_percentile_threshold": 40.0,
+      "gap_to_median": -0.1,
+      "gap_flag": false,
+      "gap_type": null
+    }
+  ]
+}

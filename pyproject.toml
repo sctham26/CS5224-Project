@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spip-analytics"
+version = "0.1.0"
+description = "Standalone ESG Analytics Engine for the Sustainable Property Intelligence Platform (SPIP)"
+requires-python = ">=3.10"
+dependencies = ["pydantic>=2", "pandas>=2", "PyYAML>=6"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+# Flat modules in src/ (no package); tests import them directly via pythonpath.
+pythonpath = ["src"]
+testpaths = ["tests"]

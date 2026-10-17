@@ -1,0 +1,53 @@
+# Metric registry — all dataset-specific assumptions are configurable here.
+# `canonical_unit` is the target unit for harmonisation; `factors` map any
+# accepted reporting unit to a multiplier against the canonical unit.
+# `gap_percentile_threshold` flags a performance gap when a comparable value
+# falls below that empirical percentile (direction-aware: 100 = best).
+
+metrics:
+  energy_intensity:
+    canonical_unit: kWh/m2/year
+    direction: lower_is_better
+    scopes: [asset, portfolio]
+    gap_percentile_threshold: 40
+    factors:
+      kWh/m2/year: 1.0
+      MWh/m2/year: 1000.0
+      kbtu/m2/year: 0.29307107
+
+  emissions_intensity:
+    canonical_unit: kgCO2e/m2/year
+    direction: lower_is_better
+    scopes: [asset, portfolio]
+    gap_percentile_threshold: 40
+    factors:
+      kgCO2e/m2/year: 1.0
+      tCO2e/m2/year: 1000.0
+      gCO2e/m2/year: 0.001
+
+  water_intensity:
+    canonical_unit: m3/m2/year
+    direction: lower_is_better
+    scopes: [asset, portfolio]
+    gap_percentile_threshold: 40
+    factors:
+      m3/m2/year: 1.0
+      liter/m2/year: 0.001
+
+  waste_diversion_rate:
+    canonical_unit: percent
+    direction: higher_is_better
+    scopes: [asset, portfolio]
+    gap_percentile_threshold: 40
+    factors:
+      percent: 1.0
+      fraction: 100.0
+
+  renewable_share:
+    canonical_unit: percent
+    direction: higher_is_better
+    scopes: [asset, portfolio]
+    gap_percentile_threshold: 40
+    factors:
+      percent: 1.0
+      fraction: 100.0
