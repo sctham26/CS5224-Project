@@ -17,7 +17,22 @@ function App() {
   const [currentPage, setCurrentPage] = useState('dashboard')
 
 
-  // ESG analytics results
+  // Selected property and reporting year
+  const [selectedEntity, setSelectedEntity] = useState('A001')
+  const [selectedYear, setSelectedYear] = useState('2024')
+
+  // Provisional property IDs for frontend testing
+  const availableEntities = [
+    'A001',
+    'A002',
+    'A003',
+    'A004',
+    'A005',
+    'A006'
+  ]
+
+
+  // Retrieve ESG analytics data from the Python Analytics API
   const [analyticsData, setAnalyticsData] = useState(null)
   const [analyticsLoading, setAnalyticsLoading] = useState(true)
   const [analyticsError, setAnalyticsError] = useState(null)
@@ -28,12 +43,15 @@ function App() {
     async function loadAnalytics() {
       try {
         setAnalyticsLoading(true)
+        setAnalyticsData(null)
         setAnalyticsError(null)
 
+        
         const response = await fetch(
-          'http://localhost:8000/analysis/A001?scope=asset&reporting_year=2024',
+          `http://localhost:8000/analysis/${encodeURIComponent(selectedEntity)}?scope=asset&reporting_year=${encodeURIComponent(selectedYear)}`,
           { signal: controller.signal }
         )
+
 
         if (!response.ok) {
           throw new Error(
@@ -57,7 +75,7 @@ function App() {
     loadAnalytics()
 
     return () => controller.abort()
-  }, [])
+  }, [selectedEntity, selectedYear])
 
   // Find the energy intensity metric in the API response
   const energyMetric = analyticsData?.metrics?.find(
@@ -160,6 +178,44 @@ function App() {
         {currentPage === 'dashboard' && (
           <section>
             <h1>Property ESG Dashboard</h1>
+
+            {/* Property and reporting year selectors */}
+            <div className="comparison-selectors dashboard-selectors">
+
+              <div>
+                <label htmlFor="selectedEntity">
+                  Select Property
+                </label>
+
+                <select
+                  id="selectedEntity"
+                  value={selectedEntity}
+                  onChange={(e) => setSelectedEntity(e.target.value)}
+                >
+                  {availableEntities.map((entityId) => (
+                    <option key={entityId} value={entityId}>
+                      {entityId}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="selectedYear">
+                  Reporting Year
+                </label>
+
+                <select
+                  id="selectedYear"
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(e.target.value)}
+                >
+                  <option value="2024">2024</option>
+                </select>
+              </div>
+
+            </div>
+
 
             {analyticsLoading && (
               <div className="info-box">
@@ -274,7 +330,7 @@ function App() {
                           <th>ESG Metric</th>
                           <th>Value</th>
                           <th>Peer Median</th>
-                          <th>Percentile</th>
+                          <th>Percentile (0-100)</th>
                           <th>Status</th>
                         </tr>
                       </thead>
@@ -306,9 +362,12 @@ function App() {
                             </td>
 
                             <td>
-                              {metric.benchmark?.empirical_percentile == null
-                                ? 'N/A'
-                                : `${metric.benchmark.empirical_percentile}th`}
+                                {metric.benchmark?.empirical_percentile == null
+                                 ? 'N/A'
+                                  : Number(metric.benchmark.empirical_percentile)
+                                    .toLocaleString(undefined, {
+                                    maximumFractionDigits: 2
+                                  })}
                             </td>
 
                             <td>
