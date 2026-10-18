@@ -306,3 +306,22 @@ footer {
   outline-offset: 2px;
 }
 
+
+/* API-driven comparison improvements */
+
+.comparison-selectors {
+  margin-top: 25px;
+}
+
+.comparison-table td {
+  vertical-align: middle;
+}
+
+.comparison-chart .subtitle {
+  margin-top: 10px;
+  margin-bottom: 15px;
+}
+
+.comparison-summary {
+  line-height: 1.6;
+}
