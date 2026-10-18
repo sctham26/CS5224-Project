@@ -264,3 +264,33 @@ footer {
     height: 280px;
   }
 }
+
+
+/* API-driven dashboard sections */
+
+.dashboard-section {
+  margin-top: 25px;
+}
+
+.dashboard-section ul {
+  padding-left: 22px;
+}
+
+.dashboard-section li {
+  margin-bottom: 18px;
+  line-height: 1.6;
+}
+
+.dashboard-section li p {
+  color: #66756c;
+  margin-top: 6px;
+}
+
+.dashboard-section .comparison-table {
+  min-width: 750px;
+}
+
+.dashboard-section .comparison-table td {
+  vertical-align: top;
+}
+

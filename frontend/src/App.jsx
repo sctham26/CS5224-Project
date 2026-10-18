@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   BarChart,
   Bar,
@@ -15,6 +15,54 @@ import './App.css'
 function App() {
   // Remember which page the user selected
   const [currentPage, setCurrentPage] = useState('dashboard')
+
+
+  // ESG analytics results
+  const [analyticsData, setAnalyticsData] = useState(null)
+  const [analyticsLoading, setAnalyticsLoading] = useState(true)
+  const [analyticsError, setAnalyticsError] = useState(null)
+
+  useEffect(() => {
+    const controller = new AbortController()
+
+    async function loadAnalytics() {
+      try {
+        setAnalyticsLoading(true)
+        setAnalyticsError(null)
+
+        const response = await fetch(
+          'http://localhost:8000/analysis/A001?scope=asset&reporting_year=2024',
+          { signal: controller.signal }
+        )
+
+        if (!response.ok) {
+          throw new Error(
+            `Analytics API returned HTTP ${response.status}`
+          )
+        }
+
+        const data = await response.json()
+        setAnalyticsData(data)
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          setAnalyticsError(error.message)
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setAnalyticsLoading(false)
+        }
+      }
+    }
+
+    loadAnalytics()
+
+    return () => controller.abort()
+  }, [])
+
+  // Find the energy intensity metric in the API response
+  const energyMetric = analyticsData?.metrics?.find(
+    (metric) => metric.metric_code === 'ENERGY_INTENSITY_EUI'
+  )
 
 
   // Fictional property data for frontend testing
@@ -74,30 +122,6 @@ function App() {
   ]
 
 
-  // Fictional data for testing our interface
-  const metrics = [
-    {
-      name: 'Energy Intensity',
-      value: '145',
-      unit: 'kWh/m²/year'
-    },
-    {
-      name: 'Peer Median',
-      value: '170',
-      unit: 'kWh/m²/year'
-    },
-    {
-      name: 'Percentile',
-      value: '72nd',
-      unit: 'Illustrative ranking'
-    },
-    {
-      name: 'Performance Gap',
-      value: '-14.7%',
-      unit: 'Compared with peer median'
-    }
-  ]
-
   return (
     <div className="app">
 
@@ -132,37 +156,209 @@ function App() {
       {/* Main content */}
       <main className="main-content">
 
+ 
         {currentPage === 'dashboard' && (
           <section>
             <h1>Property ESG Dashboard</h1>
-            <p className="subtitle">
-              Building A | Reporting Year: 2025
-            </p>
 
-            <div className="metric-grid">
-              {metrics.map((metric) => (
-                <div className="metric-card" key={metric.name}>
-                  <p>{metric.name}</p>
-                  <h2>{metric.value}</h2>
-                  <span>{metric.unit}</span>
+            {analyticsLoading && (
+              <div className="info-box">
+                <p>Loading ESG analytics...</p>
+              </div>
+            )}
+
+            {analyticsError && (
+              <div className="info-box">
+                <p className="api-error">
+                  Unable to retrieve analytics: {analyticsError}
+                </p>
+                <p>
+                  Please check that the Python Analytics API
+                  is running on port 8000.
+                </p>
+              </div>
+            )}
+
+            {!analyticsLoading && !analyticsError && analyticsData && (
+              <>
+                <p className="subtitle">
+                  {analyticsData.entity_name} |
+                  Reporting Year: {analyticsData.reporting_year}
+                </p>
+
+                <div className="metric-grid">
+                  <div className="metric-card">
+                    <p>Energy Intensity</p>
+                    <h2>
+                      {energyMetric?.standardised_value ?? 'N/A'}
+                    </h2>
+                    <span>
+                      {energyMetric?.canonical_unit ?? ''}
+                    </span>
+                  </div>
+
+                  <div className="metric-card">
+                    <p>Peer Median</p>
+                    <h2>
+                      {energyMetric?.benchmark?.peer_median ?? 'N/A'}
+                    </h2>
+                    <span>
+                      {energyMetric?.canonical_unit ?? ''}
+                    </span>
+                  </div>
+
+                  <div className="metric-card">
+                    <p>Empirical Percentile</p>
+                    <h2>
+                      {energyMetric?.benchmark?.empirical_percentile ?? 'N/A'}
+                    </h2>
+                    <span>100 = best performance</span>
+                  </div>
+
+                  <div className="metric-card">
+                    <p>Performance Gap</p>
+                    <h2>
+                      {energyMetric?.gap_analysis?.is_flagged == null
+                        ? 'N/A'
+                        : energyMetric.gap_analysis.is_flagged
+                          ? 'Flagged'
+                          : 'Not Flagged'}
+                    </h2>
+                    <span>Based on analytics threshold</span>
+                  </div>
                 </div>
-              ))}
-            </div>
 
-            <div className="info-box">
-              <h3>Energy Performance Summary</h3>
-              <p>
-                Building A has an energy intensity of
-                145 kWh/m²/year, compared with a fictional
-                peer median of 170 kWh/m²/year.
-              </p>
-              <p>
-                This represents approximately 14.7% lower
-                energy intensity than the peer median.
-              </p>
-            </div>
+                {/* Peer cohort information */}
+                <div className="info-box dashboard-section">
+                  <h3>Peer Benchmarking Information</h3>
+
+                  <p>
+                    <strong>Property type:</strong>{' '}
+                    {analyticsData.peer_cohort?.property_type ?? 'N/A'}
+                  </p>
+
+                  <p>
+                    <strong>Region:</strong>{' '}
+                    {analyticsData.peer_cohort?.region ?? 'N/A'}
+                  </p>
+
+                  <p>
+                    <strong>Peer cohort size:</strong>{' '}
+                    {analyticsData.peer_cohort?.sample_size_n ?? 'N/A'}
+                  </p>
+
+                  <p>
+                    <strong>Fallback applied:</strong>{' '}
+                    {analyticsData.peer_cohort?.fallback_applied
+                      ? 'Yes'
+                      : 'No'}
+                  </p>
+
+                  {analyticsData.peer_cohort?.fallback_applied && (
+                    <p>
+                      <strong>Fallback reason:</strong>{' '}
+                      {analyticsData.peer_cohort?.fallback_reason
+                        ?? 'Not specified'}
+                    </p>
+                  )}
+                </div>
+
+                {/* ESG metrics table */}
+                <div className="info-box dashboard-section">
+                  <h3>ESG Metrics Overview</h3>
+
+                  <div className="table-wrapper">
+                    <table className="comparison-table">
+                      <thead>
+                        <tr>
+                          <th>ESG Metric</th>
+                          <th>Value</th>
+                          <th>Peer Median</th>
+                          <th>Percentile</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {analyticsData.metrics.map((metric) => (
+                          <tr key={metric.metric_code}>
+                            <td>
+                              {metric.metric_code
+                                .replaceAll('_', ' ')}
+                            </td>
+
+                            <td>
+                              {metric.standardised_value == null
+                                ? 'Not reported'
+                                : `${Number(metric.standardised_value)
+                                    .toLocaleString(undefined, {
+                                      maximumFractionDigits: 2
+                                    })} ${metric.canonical_unit}`}
+                            </td>
+
+                            <td>
+                              {metric.benchmark?.peer_median == null
+                                ? 'N/A'
+                                : Number(metric.benchmark.peer_median)
+                                    .toLocaleString(undefined, {
+                                      maximumFractionDigits: 2
+                                    })}
+                            </td>
+
+                            <td>
+                              {metric.benchmark?.empirical_percentile == null
+                                ? 'N/A'
+                                : `${metric.benchmark.empirical_percentile}th`}
+                            </td>
+
+                            <td>
+                              {metric.comparability_status
+                                .replaceAll('_', ' ')}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Gap analysis */}
+                <div className="info-box dashboard-section">
+                  <h3>ESG Gap Analysis</h3>
+
+                  {analyticsData.metrics.some(
+                    (metric) => metric.gap_analysis?.is_flagged
+                  ) ? (
+                    <ul>
+                      {analyticsData.metrics
+                        .filter(
+                          (metric) => metric.gap_analysis?.is_flagged
+                        )
+                        .map((metric) => (
+                          <li key={metric.metric_code}>
+                            <strong>
+                              {metric.metric_code.replaceAll('_', ' ')}
+                            </strong>
+                            {' — '}
+                            {metric.gap_analysis?.gap_type
+                              ?.replaceAll('_', ' ')}
+                            <p>
+                              {metric.gap_analysis?.recommendation_signal
+                                ?? 'No recommendation available'}
+                            </p>
+                          </li>
+                        ))}
+                    </ul>
+                  ) : (
+                    <p>No ESG gaps flagged by the analytics engine.</p>
+                  )}
+                </div>
+              </>
+            )}
           </section>
         )}
+
+
 
         {currentPage === 'upload' && (
           <section>
