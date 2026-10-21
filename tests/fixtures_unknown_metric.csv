@@ -1,0 +1,2 @@
+tenant_id,visibility,entity_id,postal_code,entity_name,property_type,region,reporting_scope,reporting_year,period_start,period_end,gross_floor_area_sqm,metric_code,raw_value,raw_unit,standardised_value,canonical_unit,comparability_status,operational_boundary,source_reference
+PUBLIC,PUBLIC_BASELINE,BAD_1,100001,Bad Building,OFFICE,SG,ASSET,2025,2025-01-01,2025-12-31,30000.0,BOGUS_METRIC,10.0,kWh/m2/yr,10.0,kWh/m2/yr,COMPARABLE,WHOLE_BUILDING_GFA,TEST
