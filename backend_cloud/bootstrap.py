@@ -42,7 +42,7 @@ def bootstrap():
         # PostgreSQL requires membership to create schemas/default grants for
         # another owner; only the infrastructure administrator receives it.
         for role in ("public_migrator", "tenant_migrator"):
-            conn.execute(sql.SQL("GRANT {} TO {} WITH SET TRUE")
+            conn.execute(sql.SQL("GRANT {} TO {} WITH SET TRUE, INHERIT TRUE")
                          .format(sql.Identifier(f"spip_{role}"), sql.Identifier(admin["username"])))
         for database in ("spip_public", "spip_tenant"):
             if not conn.execute("SELECT 1 FROM pg_database WHERE datname = %s", (database,)).fetchone():
