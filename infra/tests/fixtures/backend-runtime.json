@@ -1,0 +1,21 @@
+{
+  "postgres_version": "18.6",
+  "multi_az": true,
+  "allowed_origins": [
+    "https://example.cloudfront.net"
+  ],
+  "api_image": "825990809862.dkr.ecr.ap-southeast-1.amazonaws.com/test-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "worker_image": "825990809862.dkr.ecr.ap-southeast-1.amazonaws.com/test-worker@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "worker_command": [
+    "python",
+    "-m",
+    "worker"
+  ],
+  "jwt_issuer": "https://issuer.example.invalid",
+  "jwt_audience": [
+    "ci-client"
+  ],
+  "authorization_scopes": [
+    "spip/access"
+  ]
+}

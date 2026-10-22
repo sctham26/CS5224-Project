@@ -62,3 +62,11 @@ Alex proposed implementing these components individually before connecting them 
 Python CDK (`infra/`, managed by uv) defines private S3, CloudFront OAC, and a scoped GitHub OIDC publishing role. The [workflow](.github/workflows/frontend.yml) builds and checks PRs, and publishes relevant pushes to `cloud-config`/`main` to one development site. See [setup, branch coordination, API limitations, and recovery](docs/FRONTEND_DEPLOYMENT.md).
 
 Development website: https://d10rc41o4pb0h.cloudfront.net. The frontend renders, but analytics requires the separately planned backend integration.
+
+## 7. Proposed backend integration contract
+
+The [backend–cloud contract draft](docs/BACKEND_CLOUD_CONTRACT.md) reserves upload/job/result interfaces, worker message envelopes, storage and secret configuration, and responsibility boundaries. It is a proposal for backend-team review; it does not define ESG columns or business tables and is not deployed.
+
+## 8. Backend cloud configuration
+
+[Backend deployment](docs/BACKEND_DEPLOYMENT.md) describes the opt-in data/runtime CDK stacks, PostgreSQL logical-database bootstrap, application-role permissions, reserved JWT-protected API routes and worker configuration. The backend [interface draft](docs/BACKEND_CLOUD_CONTRACT.md) remains included. These templates are implemented but not deployed; business tables, RLS migrations and upload/job processing remain backend-owned.
