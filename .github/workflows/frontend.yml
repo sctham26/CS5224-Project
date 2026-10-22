@@ -43,6 +43,8 @@ jobs:
         env:
           CDK_DEFAULT_ACCOUNT: '825990809862'
           CDK_DEFAULT_REGION: ap-southeast-1
+          AWS_REGION: ap-southeast-1
+          AWS_DEFAULT_REGION: ap-southeast-1
 
   frontend-build:
     runs-on: ubuntu-latest

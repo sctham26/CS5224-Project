@@ -2,7 +2,7 @@
 
 Deployment plan for `cloud-config` (Alex and Auxane)
 
-**Status:** frontend hosting is deployed and its first GitHub Actions release passed on 2026-10-22; see [frontend deployment and verification](docs/FRONTEND_DEPLOYMENT.md). Backend runtime, authentication, database, and ingestion remain planned. Cloud verification is recorded separately in that deployment guide.
+**Status:** frontend hosting and automated releases are deployed. Backend data/runtime CDK templates and database bootstrap are implemented but not deployed; authentication, application ingestion/jobs, business migrations and tenant RLS remain to implement. Start with the [team handoff and branch integration guide](docs/CLOUD_HANDOFF.md); deployment evidence is in [frontend deployment](docs/FRONTEND_DEPLOYMENT.md).
 
 ## 1. Before provisioning
 
@@ -13,7 +13,7 @@ Deployment plan for `cloud-config` (Alex and Auxane)
 
 ## 2. Deployment tasks
 
-All items below are planned.
+The table records the original scope and acceptance criteria. Current delivery status is maintained in the [handoff](docs/CLOUD_HANDOFF.md).
 
 | Area | Work to implement | Completion check |
 | --- | --- | --- |
@@ -23,7 +23,7 @@ All items below are planned.
 | Authentication | Configure Cognito, token validation, trusted organisation membership, and frontend login settings. | Valid users connect; invalid tokens and unauthorised organisation access are rejected. |
 | Database | Provision private RDS PostgreSQL; add schema migrations, data-access integration, and Row-Level Security using a restricted application role. | Data survives restarts; two organisations cannot read or modify each other's private rows. |
 | File storage | Configure private S3 storage, organisation-scoped access policies, authorised upload URLs, ownership records, and retention. | Users can upload permitted files and cannot access or replace another organisation's files. |
-| Background processing | Connect S3 notifications to SQS; add a Fargate worker, retries, duplicate protection, failed-message handling, and persistent job status. Reuse Song's engine with authorised inputs. | An upload produces stored results; concurrent files stay separate and retries create no duplicate records. |
+| Background processing | Use explicit job submission and a backend dispatcher to SQS; add a Fargate worker, retries, duplicate protection, failed-message handling, and persistent job status. Reuse Song's engine with authorised inputs. | An upload produces stored results; concurrent files stay separate and retries create no duplicate records. |
 | Frontend hosting | Build the frontend; upload the output to private S3 and serve it through CloudFront with origin access control and HTTPS. Supply deployed API/login configuration. | The website works without a local backend and displays the uploaded data's results. |
 | Monitoring and costs | Configure CloudWatch logs, retention, failure/backlog monitoring, cost tracking, and cleanup procedures. | A failed upload can be diagnosed; resource consumption and shutdown/retention choices are documented. |
 | Deployment automation | Add GitHub Actions for checks, builds, and releases after verifying AWS authentication support. Define triggers, release coordination, and recovery. | A known commit can be released repeatedly; its deployed version and recovery procedure are recorded. |
