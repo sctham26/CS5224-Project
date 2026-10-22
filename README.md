@@ -2,7 +2,7 @@
 
 Deployment plan for `cloud-config` (Alex and Auxane)
 
-**Status:** planning. Infrastructure code, container packaging, and deployment workflows are not yet versioned. Existing AWS resources and sandbox permissions have not been verified.
+**Status:** frontend hosting and GitHub Actions are implemented in this branch; see [frontend deployment and verification](docs/FRONTEND_DEPLOYMENT.md). Backend runtime, authentication, database, and ingestion remain planned. Cloud verification is recorded separately in that deployment guide.
 
 ## 1. Before provisioning
 
@@ -46,3 +46,17 @@ Record the account/region, resource names, infrastructure and application versio
 Keep **planned**, **implemented**, **tested**, and **deployed** statuses separate.
 
 Application walkthroughs and technical explanations are in the [Project and Architecture Guide](docs/PROJECT_GUIDE.md).
+
+## 5. Component delivery boundaries
+
+Alex proposed implementing these components individually before connecting them through an end-to-end test:
+
+1. Authentication and authorisation.
+2. Frontend distribution and storage (CloudFront + S3).
+3. Backend runtime deployment and input/output integration.
+4. Database deployment and multi-tenant isolation validation.
+5. File upload and asynchronous processing.
+
+## 6. Frontend delivery
+
+Python CDK (`infra/`, managed by uv) defines private S3, CloudFront OAC, and a scoped GitHub OIDC publishing role. The [workflow](.github/workflows/frontend.yml) builds and checks PRs, and publishes relevant pushes to `cloud-config`/`main` to one development site. See [setup, branch coordination, API limitations, and recovery](docs/FRONTEND_DEPLOYMENT.md).

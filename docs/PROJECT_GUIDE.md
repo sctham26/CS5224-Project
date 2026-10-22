@@ -4,6 +4,10 @@ This secondary guide explains the application, the code available on other branc
 
 **Current scope:** ESG data upload, harmonisation, property benchmarking, a dashboard, authentication, organisation data isolation, and AWS deployment. The AI assistant is outside the current implementation scope.
 
+## Deployment update (2026-10-22)
+
+The frontend/CDK/Actions module has now been added on `cloud-config`. Its source version, actual deployment evidence, and remaining API limitations are tracked in [Frontend deployment](FRONTEND_DEPLOYMENT.md). Statements below about missing frontend hosting/workflows and hardcoded API addresses describe the earlier inspected branch snapshot; they do not describe the new deployment module. Backend, authentication, storage integration, and tenant-isolation limitations still apply.
+
 ## Reading guide
 
 Start with sections 1–2 for the overall picture. Sections 3–4 explain the existing analytics and frontend code in detail. Sections 5–6 describe the proposed cloud implementation. Section 7 covers team responsibilities, and section 8 explains local tools, GitHub, and AWS. Sections 9–10 cover implementation stages and handover evidence. Section 11 lists technical references.
