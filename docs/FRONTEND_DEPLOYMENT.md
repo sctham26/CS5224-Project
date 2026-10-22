@@ -95,3 +95,25 @@ This module does not provision ECS, RDS, NAT gateways, custom domains, or a paid
 ## Deployment evidence
 
 Record deployed resource IDs and the first successful Actions run below after verification. Never confuse local synthesis or unit tests with a deployed service.
+
+Verified on **2026-10-22 (Asia/Singapore)**:
+
+| Item | Observed result |
+| --- | --- |
+| AWS account / region | `825990809862` / `ap-southeast-1` |
+| CDK bootstrap | `CDKToolkit` created, with termination protection |
+| Frontend stack | `InfraStack` reached `CREATE_COMPLETE` |
+| Website | https://d10rc41o4pb0h.cloudfront.net |
+| S3 bucket | `infrastack-webbucket12880f5b-raw9utx9tvl3` |
+| CloudFront distribution | `E3QY7X63F4GZGW`, deployed |
+| OIDC publishing role | `arn:aws:iam::825990809862:role/InfraStack-FrontendDeployRoleBA19618F-vZQMAvup1aIE` |
+| Released source | `51936a87f91ddb1eccd30bb254c4d3d35f11a12d` |
+| First automatic run | [39768583082](https://github.com/sctham26/CS5224-Project/actions/runs/39768583082), all three jobs succeeded |
+| Local checks | Frontend lint/build, four infrastructure tests, eight publication/verification tests, strict CDK synthesis, and actionlint passed |
+| Live release check | HTML matched the build; both JS/CSS assets loaded; `release.json` matched the commit |
+| Access/routing checks | Anonymous direct S3 read returned 403; SPA navigation returned HTML/200; missing JS and unconnected `/api/health` retained 403 responses |
+| Browser check | React dashboard rendered; analytics showed the expected unavailable-API error |
+
+The first release used GitHub OIDC credentials, not the operator's SSO credentials. No permanent AWS access keys were added. GitHub repository variable writes succeeded with collaborator permissions. The earlier existing CloudFront distribution `E1V5DW2RLX4J8A` was left unchanged.
+
+The frontend code's existing error text still mentions starting the local Python API on port 8000. The deployed browser uses `/api`, not localhost. This is a wording limitation of the existing application; backend integration remains a separate task.
