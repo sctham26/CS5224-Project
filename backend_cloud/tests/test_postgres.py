@@ -15,7 +15,7 @@ pytestmark = pytest.mark.skipif(not os.environ.get("SPIP_TEST_POSTGRES_PASSWORD"
 def credentials():
     root_password = os.environ["SPIP_TEST_POSTGRES_PASSWORD"]
     args = dict(host="localhost", port=5432, sslmode="verify-full", sslrootcert=os.environ["PGSSLROOTCERT"])
-    with psycopg.connect(**args, dbname="postgres", user="pg_admin", password=root_password, autocommit=True) as conn:
+    with psycopg.connect(**args, dbname="postgres", user="test_admin", password=root_password, autocommit=True) as conn:
         # Exercise a CREATEDB/CREATEROLE administrator, rather than relying on a
         # PostgreSQL superuser to hide privilege mistakes in bootstrap SQL.
         conn.execute("CREATE ROLE spip_operator LOGIN CREATEDB CREATEROLE PASSWORD 'operator_test_only'")
