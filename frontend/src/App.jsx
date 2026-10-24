@@ -1,7 +1,9 @@
 import PropertyComparison from './components/PropertyComparison'
+import CsvUpload from './components/CsvUpload'
 import { useState, useEffect } from 'react'
 import './App.css'
 import { API_BASE_URL } from './api'
+import { authenticatedFetch } from './auth'
 
 
 function App() {
@@ -39,7 +41,7 @@ function App() {
         setAnalyticsError(null)
 
 
-        const response = await fetch(
+        const response = await authenticatedFetch(
           `${API_BASE_URL}/analysis/${encodeURIComponent(selectedEntity)}?scope=asset&reporting_year=${encodeURIComponent(selectedYear)}`,
           { signal: controller.signal }
         )
@@ -355,24 +357,7 @@ function App() {
 
 
 
-        {currentPage === 'upload' && (
-          <section>
-            <h1>Upload ESG Data</h1>
-            <p className="subtitle">
-              Upload your property's ESG dataset for analysis.
-            </p>
-
-            <div className="info-box">
-              <h3>CSV Upload</h3>
-              <p>
-                This page will allow users to upload
-                ESG datasets in CSV format.
-              </p>
-              <p>File upload functionality coming soon.</p>
-            </div>
-          </section>
-        )}
-
+        {currentPage === 'upload' && <CsvUpload />}
 
         {currentPage === 'comparison' && (
           <PropertyComparison />

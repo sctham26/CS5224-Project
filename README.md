@@ -2,7 +2,7 @@
 
 Deployment plan for `cloud-config` (Alex and Auxane)
 
-**Status:** frontend hosting and automated releases are deployed. Backend data/runtime CDK templates and database bootstrap are implemented but not deployed; authentication, application ingestion/jobs, business migrations and tenant RLS remain to implement. Start with the [team handoff and branch integration guide](docs/CLOUD_HANDOFF.md); deployment evidence is in [frontend deployment](docs/FRONTEND_DEPLOYMENT.md).
+**Status:** frontend hosting and automated releases are deployed. Backend data/runtime CDK templates and database bootstrap are implemented but not deployed; Cognito login and browser integration are implemented (see section 9); backend authorization, application ingestion/jobs, business migrations and tenant RLS remain to implement. Start with the [team handoff and branch integration guide](docs/CLOUD_HANDOFF.md); deployment evidence is in [frontend deployment](docs/FRONTEND_DEPLOYMENT.md).
 
 ## 1. Before provisioning
 
@@ -70,3 +70,7 @@ The [backend–cloud contract draft](docs/BACKEND_CLOUD_CONTRACT.md) reserves up
 ## 8. Backend cloud configuration
 
 [Backend deployment](docs/BACKEND_DEPLOYMENT.md) describes the opt-in data/runtime CDK stacks, PostgreSQL logical-database bootstrap, application-role permissions, reserved JWT-protected API routes and worker configuration. The backend [interface draft](docs/BACKEND_CLOUD_CONTRACT.md) remains included. These templates are implemented but not deployed; business tables, RLS migrations and upload/job processing remain backend-owned.
+
+## 9. Login and authorization integration
+
+[Login module and auth contract](docs/AUTH_CONTRACT.md) documents the independently deployed Cognito stack, invite-only accounts, frontend login/logout and authenticated requests, public build settings, local demo mode and backend tenant-authorization responsibilities. The frontend includes the latest CSV demo; actual S3 upload remains to implement. Cognito login does not establish tenant membership or complete backend isolation.

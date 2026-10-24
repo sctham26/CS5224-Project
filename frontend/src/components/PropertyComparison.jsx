@@ -11,6 +11,7 @@ import {
 } from 'recharts'
 
 import { API_BASE_URL } from '../api'
+import { authenticatedFetch } from '../auth'
 
 // Temporary property list until a property-list API is available
 const PROPERTY_IDS = [
@@ -96,7 +97,7 @@ function PropertyComparison() {
 
       try {
         const fetchProperty = async (entityId) => {
-          const response = await fetch(
+          const response = await authenticatedFetch(
             `${API_BASE_URL}/analysis/${encodeURIComponent(entityId)}` +
               `?scope=asset&reporting_year=${reportingYear}`,
             { signal: controller.signal }

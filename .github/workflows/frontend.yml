@@ -45,6 +45,13 @@ jobs:
           CDK_DEFAULT_REGION: ap-southeast-1
           AWS_REGION: ap-southeast-1
           AWS_DEFAULT_REGION: ap-southeast-1
+      - name: Synthesize independent login module without AWS credentials
+        run: npx cdk synth AuthStack --strict --quiet --no-lookups -c enable_auth=true
+        working-directory: infra
+        env:
+          CDK_DEFAULT_ACCOUNT: '825990809862'
+          AWS_REGION: ap-southeast-1
+          AWS_DEFAULT_REGION: ap-southeast-1
 
   frontend-build:
     runs-on: ubuntu-latest
@@ -62,10 +69,15 @@ jobs:
         working-directory: frontend
       - run: npm run lint
         working-directory: frontend
+      - run: npm test
+        working-directory: frontend
       - run: npm run build
         working-directory: frontend
         env:
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_AUTH_ISSUER: ${{ vars.VITE_AUTH_ISSUER }}
+          VITE_AUTH_CLIENT_ID: ${{ vars.VITE_AUTH_CLIENT_ID }}
+          VITE_AUTH_DOMAIN: ${{ vars.VITE_AUTH_DOMAIN }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: frontend-${{ github.sha }}

@@ -39,7 +39,7 @@ jobs:
       - run: npm ci
         working-directory: infra
       - name: Synthesize full backend with test-only images (no deployment)
-        run: npx cdk synth --strict --quiet --no-lookups -c enable_backend=true -c enable_backend_runtime=true -c backend_config=tests/fixtures/backend-runtime.json
+        run: npx cdk synth --strict --quiet --no-lookups -c enable_auth=true -c enable_backend=true -c enable_backend_runtime=true -c backend_config=tests/fixtures/backend-runtime.json
         working-directory: infra
         env:
           CDK_DEFAULT_ACCOUNT: '825990809862'
