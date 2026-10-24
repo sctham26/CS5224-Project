@@ -281,13 +281,6 @@ function PropertyComparison() {
                     const a = getMetric(first, metric.code)
                     const b = getMetric(second, metric.code)
 
-                    const compatible =
-                      isUsable(a) &&
-                      isUsable(b) &&
-                      a.canonical_unit === b.canonical_unit &&
-                      a.performance_direction ===
-                        b.performance_direction
-
                     return (
                       <tr key={metric.code}>
                         <td>{metric.label}</td>

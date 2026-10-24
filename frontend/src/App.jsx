@@ -1,15 +1,6 @@
 import PropertyComparison from './components/PropertyComparison'
+import CsvUpload from './components/CsvUpload'
 import { useState, useEffect } from 'react'
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer
-} from 'recharts'
 import './App.css'
 
 
@@ -82,63 +73,6 @@ function App() {
   const energyMetric = analyticsData?.metrics?.find(
     (metric) => metric.metric_code === 'ENERGY_INTENSITY_EUI'
   )
-
-
-  // Fictional property data for frontend testing
-  const properties = [
-    {
-      id: 'A',
-      name: 'Building A',
-      energy: 145,
-      water: 0.85,
-      carbon: 32
-    },
-    {
-      id: 'B',
-      name: 'Building B',
-      energy: 190,
-      water: 1.12,
-      carbon: 41
-    },
-    {
-      id: 'C',
-      name: 'Building C',
-      energy: 160,
-      water: 0.94,
-      carbon: 36
-    }
-  ]
-
-  // Remember which properties the user selects
-  const [property1, setProperty1] = useState('A')
-  const [property2, setProperty2] = useState('B')
-
-  // Find the selected properties
-  const building1 = properties.find(
-    (property) => property.id === property1
-  )
-
-  const building2 = properties.find(
-    (property) => property.id === property2
-  )
-
-  // Calculate the absolute energy intensity difference
-  const energyDifference = Math.abs(
-    building1.energy - building2.energy
-  )
-
-
-  // Data used by the energy comparison chart
-  const chartData = [
-    {
-      name: building1.name,
-      energy: building1.energy
-    },
-    {
-      name: building2.name,
-      energy: building2.energy
-    }
-  ]
 
 
   return (
@@ -421,21 +355,7 @@ function App() {
 
 
         {currentPage === 'upload' && (
-          <section>
-            <h1>Upload ESG Data</h1>
-            <p className="subtitle">
-              Upload your property's ESG dataset for analysis.
-            </p>
-
-            <div className="info-box">
-              <h3>CSV Upload</h3>
-              <p>
-                This page will allow users to upload
-                ESG datasets in CSV format.
-              </p>
-              <p>File upload functionality coming soon.</p>
-            </div>
-          </section>
+          <CsvUpload />
         )}
 
         
