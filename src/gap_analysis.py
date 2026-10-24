@@ -124,7 +124,9 @@ def run_gap_analysis(
         targets = [r for r in targets if r.reporting_period == reporting_period]
     if not targets:
         raise ValueError(f"entity {entity_id!r} not found in {scope.value} scope")
-    target = targets[0]
+    # Multi-period datasets (e.g. BCA baseline 2017-2025): default to the
+    # latest period; within one period load_records already merges to one row.
+    target = max(targets, key=lambda r: r.reporting_period)
 
     names = sorted(set(registry.metrics) | set(target.metrics) | set(target.dropped))
     metric_entries = [

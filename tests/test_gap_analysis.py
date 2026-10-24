@@ -116,6 +116,14 @@ def test_incomparable_metric_is_disclosure_gap():
     assert RENEW in result["summary"]["disclosure_gaps"]
 
 
+def test_default_period_is_latest_for_multi_period_entity():
+    # A003 reports 2024 and 2023; without reporting_period pick the latest.
+    result = run_gap_analysis(
+        data_path=DATA, metrics_path=METRICS, peer_rules_path=RULES, entity_id="A003"
+    )
+    assert result["reporting_period"] == "2024"
+
+
 def test_undisclosed_metric_is_disclosure_gap():
     # A003 (2023) discloses only a subset of declared metrics -> rest not_disclosed.
     result = run_gap_analysis(
