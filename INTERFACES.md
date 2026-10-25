@@ -25,12 +25,18 @@ baseline plus that tenant's own rows.
 | `GET /health` | — | Liveness probe; unprotected (ALB) |
 | `GET /entities` | optional `scope=asset\|portfolio` | Discovery: entities visible to this tenant with the reporting years present in the data |
 | `GET /analysis/{entity_id}` | `scope=asset\|portfolio`, `reporting_year` | Serve `data/cleaned/public_esg_baseline.csv` (or `SPIP_DATA`), or PostgreSQL when `SPIP_PUBLIC_DATABASE_URL` is set |
+| `POST /uploads` | — | Presigned `PUT` for `tenants/<tenant>/uploads/<uuid>.csv`; `201` with `upload_url`, `method`, `key`, `expires_in` |
+| `POST /jobs` | `Idempotency-Key` header + `{upload_key, entity_id, reporting_year?, scope?}` | `202` with `job_id`, `status`, `status_url`; identical retry replays the same job (`Idempotent-Replay: true`) |
+| `GET /jobs/{job_id}` | — | Ownership-checked state, `result` when `SUCCEEDED`, `error` when `FAILED` |
 | `POST /analyze` | multipart `file`, `entity_id`, `reporting_year`, `scope` | Local synchronous upload (unique temp file); not a production upload path |
 
 Errors: `401` missing/invalid/expired token, `403` valid account without tenant
-membership, `404` entity not visible to this tenant, `422` bad scope / unknown
-`metric_code` / missing `entity_id` / unreadable CSV. CORS is restricted to
-`SPIP_ALLOWED_ORIGINS` and allows the `Authorization` header. Response body always matches
+membership, `404` entity / upload key / job not visible to this tenant, `409`
+idempotency key reused with a different request, `422` bad scope / unknown `metric_code` /
+missing `entity_id` / invalid job envelope, `503` upload pipeline not configured. CORS is
+restricted to `SPIP_ALLOWED_ORIGINS` and allows `Authorization`, `Content-Type` and
+`Idempotency-Key`. `/health` is never prefixed; set `SPIP_API_PREFIX=/api` only if the
+gateway keeps the browser-facing segment instead of stripping it. Response body always matches
 `schemas/analytics_output_contract.json` (PR #1): `entity_id`, `entity_name`,
 `tenant_id`, `reporting_year` (int), `peer_cohort{property_type, region, sample_size_n,
 fallback_applied, fallback_reason}`, `metrics[]` with `comparability_status` ∈

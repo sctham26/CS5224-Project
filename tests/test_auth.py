@@ -62,7 +62,7 @@ def test_valid_account_without_membership_is_forbidden():
 def test_claim_checks_reject_wrong_token_use_client_and_scope():
     validator = TokenValidator(
         issuer="https://example.invalid/pool",
-        client_id="client-1",
+        audiences=("client-1",),
         key_resolver=lambda token: "key",
     )
     # Garbage token still fails signature verification before claim checks.

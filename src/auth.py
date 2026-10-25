@@ -91,13 +91,13 @@ class TokenValidator:
     def __init__(
         self,
         issuer: str,
-        client_id: str,
-        required_scope: str = "spip/access",
+        audiences: tuple[str, ...] | list[str],
+        required_scope: str | None = "spip/access",
         jwks_url: Optional[str] = None,
         key_resolver=None,
     ):
         self.issuer = issuer.rstrip("/")
-        self.client_id = client_id
+        self.audiences = tuple(audiences)
         self.required_scope = required_scope
         self.jwks_url = jwks_url or f"{self.issuer}/.well-known/jwks.json"
         self._key_resolver = key_resolver
@@ -132,10 +132,12 @@ class TokenValidator:
 
         if claims.get("token_use") != "access":
             raise InvalidToken("token_use must be access")
-        if claims.get("client_id") != self.client_id:
-            raise InvalidToken("client_id does not match this application")
+        # Cognito access tokens carry client_id; the gateway authorizer matches aud.
+        presented = {claims.get("client_id")} | set(claims.get("aud") or [])
+        if self.audiences and not presented.intersection(self.audiences):
+            raise InvalidToken("token audience does not match this application")
         scopes = tuple(str(claims.get("scope", "")).split())
-        if self.required_scope not in scopes:
+        if self.required_scope and self.required_scope not in scopes:
             raise InvalidToken(f"missing required scope {self.required_scope}")
         if not claims.get("sub"):
             raise InvalidToken("token has no subject")
@@ -183,22 +185,30 @@ class Authenticator:
 def build_authenticator(environ: dict[str, str] | None = None) -> Authenticator:
     """Construct the authenticator from runtime configuration.
 
-    ``SPIP_AUTH_ENABLED`` defaults to ``false`` so local development keeps
-    working; the deployment sets it to ``true``.
+    ``SPIP_AUTH_ENABLED`` defaults to whether the deployment supplies
+    ``SPIP_JWT_ISSUER`` (which it always does in ECS), so a cloud task cannot end
+    up unauthenticated by omission while local development stays open.
     """
     env = os.environ if environ is None else environ
-    enabled = env.get("SPIP_AUTH_ENABLED", "false").lower() == "true"
+    explicit = env.get("SPIP_AUTH_ENABLED")
+    enabled = (
+        explicit.lower() == "true"
+        if explicit is not None
+        else bool(env.get("SPIP_JWT_ISSUER"))
+    )
     if not enabled:
         return Authenticator(
             enabled=False,
             demo_tenant=env.get("SPIP_DEMO_TENANT", PUBLIC_TENANT),
         )
 
-    issuer = env["SPIP_AUTH_ISSUER"]
+    audiences = tuple(
+        item.strip() for item in env.get("SPIP_JWT_AUDIENCE", "").split(",") if item.strip()
+    )
     validator = TokenValidator(
-        issuer=issuer,
-        client_id=env["SPIP_AUTH_CLIENT_ID"],
-        required_scope=env.get("SPIP_AUTH_SCOPE", "spip/access"),
+        issuer=env["SPIP_JWT_ISSUER"],
+        audiences=audiences,
+        required_scope=env.get("SPIP_AUTH_SCOPE", "spip/access") or None,
     )
     tenant_url = env.get("SPIP_TENANT_DATABASE_URL")
     memberships: MembershipStore

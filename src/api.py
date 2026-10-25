@@ -15,12 +15,15 @@ Run: uvicorn api:app --app-dir src --reload
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import tempfile
 
-from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from auth import AuthError, Authenticator, InvalidToken, NoMembership, Principal, build_authenticator
 from contract import (
@@ -30,6 +33,13 @@ from contract import (
     analyse_to_contract,
 )
 from datastore import DataSource, build_data_source
+from jobs import (
+    IdempotencyConflict,
+    JobError,
+    build_pipeline,
+    envelope_for,
+    owns_upload_key,
+)
 from schemas import ReportingScope
 
 METRICS = os.environ.get("SPIP_METRICS", "config/metrics.yaml")
@@ -44,6 +54,11 @@ ALLOWED_ORIGINS = [
 ]
 
 app = FastAPI(title="SPIP ESG Analytics Engine", version="0.2.0")
+
+#: Optional prefix for deployments that keep the browser-facing `/api` segment at the
+#: gateway instead of stripping it. Default "" matches the CDK route definitions
+#: (`/uploads`, `/jobs`, ...). `/health` stays unprefixed for the ALB probe either way.
+PREFIX = os.environ.get("SPIP_API_PREFIX", "").rstrip("/")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -53,6 +68,17 @@ app.add_middleware(
 
 _authenticator: Authenticator = build_authenticator()
 _datasource: DataSource = build_data_source()
+# Upload presigning, job state and dispatch are absent locally; routes answer 503.
+_job_store, _uploader, _job_queue = build_pipeline()
+
+
+class JobRequest(BaseModel):
+    """Envelope for ``POST /jobs``; the upload key must be the caller's own."""
+
+    upload_key: str
+    entity_id: str
+    reporting_year: int | None = None
+    scope: str = "asset"
 
 
 def _scope(value: str) -> ReportingScope:
@@ -110,7 +136,7 @@ def _text(value) -> str:
     return str(value).strip()
 
 
-@app.get("/entities")
+@app.get(f"{PREFIX}/entities")
 def list_entities(
     scope: str | None = None,
     principal: Principal = Depends(get_principal),
@@ -157,7 +183,7 @@ def list_entities(
     )
 
 
-@app.get("/analysis/{entity_id}")
+@app.get(f"{PREFIX}/analysis/{{entity_id}}")
 def get_analysis(
     entity_id: str,
     scope: str = "asset",
@@ -169,7 +195,7 @@ def get_analysis(
     return JSONResponse(_analyse(df, entity_id, reporting_year, scope, principal.tenant_id))
 
 
-@app.post("/analyze")
+@app.post(f"{PREFIX}/analyze")
 async def post_analyze(
     file: UploadFile = File(...),
     entity_id: str = "",
@@ -207,3 +233,80 @@ async def post_analyze(
         except OSError:
             pass
     return JSONResponse(result)
+
+
+def _pipeline_ready() -> None:
+    if _uploader is None or _job_queue is None:
+        raise HTTPException(status_code=503, detail="upload pipeline is not configured")
+
+
+@app.post(f"{PREFIX}/uploads", status_code=201)
+def post_uploads(principal: Principal = Depends(get_principal)) -> JSONResponse:
+    """Presign a browser PUT into the caller's own tenant upload prefix."""
+    _pipeline_ready()
+    return JSONResponse(_uploader.presign(principal.tenant_id), status_code=201)
+
+
+@app.post(f"{PREFIX}/jobs", status_code=202)
+def post_jobs(
+    payload: JobRequest,
+    principal: Principal = Depends(get_principal),
+    idempotency_key: str = Header(..., alias="Idempotency-Key", min_length=1),
+) -> JSONResponse:
+    """Accept an uploaded object for asynchronous analysis.
+
+    Idempotent per tenant + endpoint + request hash: an identical retry returns
+    the same job, a changed body under the same key is ``409``.
+    """
+    _pipeline_ready()
+    _scope(payload.scope)
+    if not payload.entity_id:
+        raise HTTPException(status_code=422, detail="entity_id is required")
+    # An inaccessible upload reference is a 404 so its existence is never revealed.
+    if not owns_upload_key(principal.tenant_id, payload.upload_key):
+        raise HTTPException(status_code=404, detail="upload_key not found")
+
+    request_hash = hashlib.sha256(
+        json.dumps(
+            {
+                "upload_key": payload.upload_key,
+                "entity_id": payload.entity_id,
+                "reporting_year": payload.reporting_year,
+                "scope": payload.scope,
+            },
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+
+    try:
+        job, replayed = _job_store.create_or_get(
+            principal.tenant_id,
+            idempotency_key,
+            request_hash,
+            entity_id=payload.entity_id,
+            upload_key=payload.upload_key,
+            scope=payload.scope,
+            reporting_year=payload.reporting_year,
+        )
+    except IdempotencyConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    except JobError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
+
+    if not replayed:
+        try:
+            _job_queue.send(envelope_for(job))
+        except Exception as exc:  # dispatch failure: job stays QUEUED for a resend
+            raise HTTPException(status_code=503, detail=f"could not queue job: {exc}") from None
+
+    headers = {"Idempotent-Replay": "true"} if replayed else None
+    return JSONResponse(job.public(), status_code=202, headers=headers)
+
+
+@app.get(f"{PREFIX}/jobs/{{job_id}}")
+def get_job(job_id: str, principal: Principal = Depends(get_principal)) -> JSONResponse:
+    """Ownership-checked job state; other tenants see 404, never metadata."""
+    job = _job_store.get(principal.tenant_id, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    return JSONResponse(job.public())
