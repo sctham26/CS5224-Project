@@ -29,25 +29,26 @@ runner or test script is currently defined.
 
 ### ESG Dashboard
 
-The dashboard loads properties from `GET /entities` and provides searchable
-property and reporting-year selectors. Property options show the building name
-and entity ID, and the year options come from that entity's
-`reporting_years`; a newly selected property defaults to its
-`latest_reporting_year` when available. It shows the energy intensity metric
-and its peer median, percentile, and gap status, plus peer-cohort details, an
-ESG metrics table, and flagged gap-analysis recommendations when present.
-Loading, empty-list, missing-year, and request-error states are displayed in
-the UI.
+The Dashboard and Comparison Tool share an asset-level entity list loaded
+using `GET /entities?scope=asset`. Portfolio-level entities are excluded from
+property selection. The Dashboard provides a searchable property selector
+whose options show the building name and entity ID, plus reporting-year options
+from that entity's `reporting_years`. A newly selected property defaults to
+its `latest_reporting_year` when available. It shows the energy intensity
+metric and its peer median, percentile, and gap status, plus peer-cohort
+details, an ESG metrics table, and flagged gap-analysis recommendations when
+present. Loading, empty-list, missing-year, and request-error states are
+displayed in the UI.
 
 ### Property Comparison Tool
 
 The comparison page lets users choose two different properties from the same
-API-provided searchable property list, a reporting year shared by both
-properties, and an ESG metric. It retrieves both properties from the Analytics
-API and displays the metric values, a chart and a comparison summary when the
-selected values are comparable. It displays an unavailable message instead of
-presenting a direct numerical comparison when the selected metric is missing
-or incompatible.
+searchable, asset-level entity list as the Dashboard, a reporting year shared
+by both properties, and an ESG metric. It retrieves both properties from the
+Analytics API and displays the metric values, a chart and a comparison summary
+when the selected values are comparable. It displays an unavailable message
+instead of presenting a direct numerical comparison when the selected metric
+is missing or incompatible.
 
 ### CSV upload interface
 
@@ -104,10 +105,14 @@ requests from that origin (CORS).
 The source currently makes `GET` requests in these forms:
 
 ```
-http://localhost:8000/entities
+http://localhost:8000/entities?scope=asset
 http://localhost:8000/analysis/{entityId}?scope=asset&reporting_year={year}
 ```
 
+- The Dashboard fetches the entity list once; both the Dashboard and
+  Comparison Tool use this shared response for their property selectors.
+- `scope=asset` limits the selection list to asset-level/building entities;
+  portfolio-level entities are excluded from both selectors.
 - The entity-list response contains `count`, `tenant_id`, and `entities`.
   Each entity provides `entity_id`, `entity_name`, `postal_code`,
   `property_type`, `region`, `scope`, `reporting_years`, and
@@ -115,7 +120,7 @@ http://localhost:8000/analysis/{entityId}?scope=asset&reporting_year={year}
   returned by the API and does not hardcode tenant identity.
 - `{entityId}` is URL-encoded by the client. The dashboard sends the selected
   `entity_id`; the comparison page sends one request for each selected ID.
-- `scope` is set to `asset`.
+- `scope` is set to `asset` for both the entity-list and analysis requests.
 - `reporting_year` is selected from the entity's available years; comparison
   only offers years present for both selected entities.
 - A non-success HTTP response is treated as an error; successful responses are
@@ -135,27 +140,30 @@ replacement for a confirmed API contract.
 ## Local Integration Verification
 
 In local testing, the frontend connected to the separately running FastAPI
-Analytics API on port `8000`, and the analytics requests returned HTTP `200`.
-Switching properties refreshed the dashboard data, and the Comparison page
-rendered comparison visualisations for comparable results. The CSV page's demo
-validation was also tested: valid non-empty `.csv` selections enabled the
-button and showed the local demo result, while non-CSV and empty files were
-rejected. The CSV demo did not upload, store, or process files. This records
-local integration testing only; it does not mean the platform is deployed
-end to end.
+Analytics API on port `8000`; `GET /entities?scope=asset` returned an
+asset-only entity list, and the selected analytics requests returned HTTP
+`200`. Switching properties refreshed the dashboard data, and the Comparison
+page rendered comparison visualisations for comparable results. The CSV
+page's demo validation was also tested: valid non-empty `.csv` selections
+enabled the button and showed the local demo result, while non-CSV and empty
+files were rejected. The CSV demo did not upload, store, or process files.
+This documents locally tested functionality only; it does not mean the
+platform is deployed end to end or that authentication/AWS integration is
+implemented.
 
 ## Planned integration and dependencies
 
-The CSV interface is not yet connected to a backend upload API. A future
-presigned S3 upload flow is planned, but is not implemented: no signing
-endpoint, upload URL, or direct S3 request is configured in this frontend.
-Integration depends on confirming the backend API contract, including how an
-authorized upload URL is requested, how the frontend template aligns with the
-agreed CSV input schema, what metadata is required, how validation and upload
-errors are reported, and how successful uploads are confirmed. Until these
-details are implemented, keep the page in demo mode; do not treat its local
-demo message as a completed upload. AWS integration is planned functionality,
-not part of the locally verified frontend–FastAPI analytics integration.
+The CSV interface is not yet connected to a backend upload API. Cognito
+authentication and AWS integration are not implemented in this frontend. A
+future presigned S3 upload flow is planned, but is not implemented: no signing
+endpoint, upload URL, or direct S3 request is configured here. Integration
+depends on confirming the backend API contract, including how an authorized
+upload URL is requested, how the frontend template aligns with the agreed CSV
+input schema, what metadata is required, how validation and upload errors are
+reported, and how successful uploads are confirmed. Until these details are
+implemented, keep the page in demo mode; do not treat its local demo message
+as a completed upload. AWS/Cognito/S3 integration is pending, not part of the
+locally verified frontend–FastAPI analytics integration.
 
 Other current dependencies and limitations:
 
