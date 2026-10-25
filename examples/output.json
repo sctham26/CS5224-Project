@@ -1,319 +1,179 @@
 {
-  "engine_version": "0.1.0",
-  "entity_id": "A001",
-  "scope": "asset",
-  "reporting_period": "2024",
-  "provenance": {
-    "data_source": "data/synthetic_esg.csv",
-    "metrics_config": "config/metrics.yaml",
-    "peer_rules": "config/peer_rules.yaml",
-    "min_peer_size": 5,
-    "fallback_rules": [
-      "same_property_type_and_region",
-      "same_region",
-      "same_property_type",
-      "same_scope_all"
-    ],
-    "gap_percentile_threshold_source": "config/metrics.yaml"
-  },
-  "summary": {
-    "performance_gaps": [],
-    "disclosure_gaps": [
-      "CARBON_INTENSITY_SCOPE1_2",
-      "ENERGY_INTENSITY_REPORTED_TOTAL",
-      "GREEN_CERT_LEVEL",
-      "SCOPE_1_EMISSIONS",
-      "SCOPE_2_EMISSIONS",
-      "TOTAL_ENERGY_INTENSITY"
-    ]
+  "entity_id": "SG_228218_LATEST_6",
+  "entity_name": "15 Scotts",
+  "tenant_id": "PUBLIC",
+  "reporting_year": 2024,
+  "peer_cohort": {
+    "property_type": "OFFICE",
+    "region": "SG",
+    "sample_size_n": 239,
+    "fallback_applied": false,
+    "fallback_reason": null
   },
   "metrics": [
     {
-      "metric": "CARBON_INTENSITY_SCOPE1_2",
-      "status": "unavailable",
-      "comparability_status": "missing",
-      "reason": "not_disclosed",
-      "gap_type": "disclosure_gap",
-      "gap_flag": null,
-      "peer_count": 0,
-      "applied_fallback_rule": null,
-      "compatibility": {
-        "scope": "asset",
-        "reporting_period": "2024",
-        "unit": "kgCO2e/m2/yr"
+      "metric_code": "CARBON_INTENSITY_SCOPE1_2",
+      "standardised_value": null,
+      "canonical_unit": "kgCO2e/m2/yr",
+      "performance_direction": "LOWER_IS_BETTER",
+      "comparability_status": "INCOMPLETE_DATA",
+      "benchmark": null,
+      "gap_analysis": {
+        "gap_type": "DISCLOSURE_GAP",
+        "is_flagged": true,
+        "threshold_percentile": 40.0,
+        "recommendation_signal": "CARBON_INTENSITY_SCOPE1_2: not disclosed for 2024; request disclosure to enable benchmarking."
       }
     },
     {
-      "metric": "CARBON_INTENSITY_SCOPE2",
-      "status": "available",
-      "comparability_status": "comparable",
-      "reason": null,
-      "value": 22.5,
-      "unit": "kgCO2e/m2/yr",
-      "source_unit": "kgCO2e/m2/yr",
-      "conversion_factor": 1.0,
-      "source": "synthetic-dataset",
-      "direction": "lower_is_better",
-      "peer_count": 5,
-      "applied_fallback_rule": "same_property_type_and_region",
-      "compatibility": {
-        "scope": "asset",
-        "reporting_period": "2024",
-        "unit": "kgCO2e/m2/yr"
-      },
-      "peer_ids": [
-        "A002",
-        "A003",
-        "A004",
-        "A005",
-        "A006"
-      ],
+      "metric_code": "CARBON_INTENSITY_SCOPE2",
+      "standardised_value": 51.660949,
+      "canonical_unit": "kgCO2e/m2/yr",
+      "performance_direction": "LOWER_IS_BETTER",
+      "comparability_status": "UNIT_CONVERTED",
       "benchmark": {
-        "count": 5,
-        "median": 24.5,
-        "mean": 24.72,
-        "min": 19.8,
-        "max": 31.2
+        "peer_median": 55.776081,
+        "relative_rank": 96,
+        "empirical_percentile": 60.25
       },
-      "rank": 3,
-      "percentile": 60.0,
-      "gap_percentile_threshold": 40.0,
-      "gap_to_median": -2.0,
-      "gap_flag": false,
-      "gap_type": null
+      "gap_analysis": {
+        "gap_type": "NONE",
+        "is_flagged": false,
+        "threshold_percentile": 40.0,
+        "recommendation_signal": "CARBON_INTENSITY_SCOPE2: meets the 40th-percentile threshold against the peer median of 55.7761 kgCO2e/m2/yr.",
+        "delta_to_peer_median": -4.1151
+      }
     },
     {
-      "metric": "ENERGY_INTENSITY_EUI",
-      "status": "available",
-      "comparability_status": "comparable",
-      "reason": null,
-      "value": 118.0,
-      "unit": "kWh/m2/yr",
-      "source_unit": "kWh/m2/yr",
-      "conversion_factor": 1.0,
-      "source": "synthetic-dataset",
-      "direction": "lower_is_better",
-      "peer_count": 5,
-      "applied_fallback_rule": "same_property_type_and_region",
-      "compatibility": {
-        "scope": "asset",
-        "reporting_period": "2024",
-        "unit": "kWh/m2/yr"
-      },
-      "peer_ids": [
-        "A002",
-        "A003",
-        "A004",
-        "A005",
-        "A006"
-      ],
+      "metric_code": "ENERGY_INTENSITY_EUI",
+      "standardised_value": 128.509822,
+      "canonical_unit": "kWh/m2/yr",
+      "performance_direction": "LOWER_IS_BETTER",
+      "comparability_status": "COMPARABLE",
       "benchmark": {
-        "count": 5,
-        "median": 125.0,
-        "mean": 122.4,
-        "min": 101.0,
-        "max": 145.0
+        "peer_median": 138.746471,
+        "relative_rank": 96,
+        "empirical_percentile": 60.25
       },
-      "rank": 3,
-      "percentile": 60.0,
-      "gap_percentile_threshold": 40.0,
-      "gap_to_median": -7.0,
-      "gap_flag": false,
-      "gap_type": null
-    },
-    {
-      "metric": "ENERGY_INTENSITY_REPORTED_TOTAL",
-      "status": "unavailable",
-      "comparability_status": "missing",
-      "reason": "not_disclosed",
-      "gap_type": "disclosure_gap",
-      "gap_flag": null,
-      "peer_count": 0,
-      "applied_fallback_rule": null,
-      "compatibility": {
-        "scope": "asset",
-        "reporting_period": "2024",
-        "unit": "kWh/m2/yr"
+      "gap_analysis": {
+        "gap_type": "NONE",
+        "is_flagged": false,
+        "threshold_percentile": 40.0,
+        "recommendation_signal": "ENERGY_INTENSITY_EUI: meets the 40th-percentile threshold against the peer median of 138.746 kWh/m2/yr.",
+        "delta_to_peer_median": -10.2366
       }
     },
     {
-      "metric": "GREEN_CERT_LEVEL",
-      "status": "unavailable",
-      "comparability_status": "missing",
-      "reason": "not_disclosed",
-      "gap_type": "disclosure_gap",
-      "gap_flag": null,
-      "peer_count": 0,
-      "applied_fallback_rule": null,
-      "compatibility": {
-        "scope": "asset",
-        "reporting_period": "2024",
-        "unit": "ORDINAL_0_4"
+      "metric_code": "ENERGY_INTENSITY_REPORTED_TOTAL",
+      "standardised_value": null,
+      "canonical_unit": "kWh/m2/yr",
+      "performance_direction": "LOWER_IS_BETTER",
+      "comparability_status": "INCOMPLETE_DATA",
+      "benchmark": null,
+      "gap_analysis": {
+        "gap_type": "DISCLOSURE_GAP",
+        "is_flagged": true,
+        "threshold_percentile": 40.0,
+        "recommendation_signal": "ENERGY_INTENSITY_REPORTED_TOTAL: not disclosed for 2024; request disclosure to enable benchmarking."
       }
     },
     {
-      "metric": "RENEWABLE_SHARE",
-      "status": "available",
-      "comparability_status": "comparable",
-      "reason": null,
-      "value": 18.0,
-      "unit": "percent",
-      "source_unit": "fraction",
-      "conversion_factor": 100.0,
-      "source": "synthetic-dataset",
-      "direction": "higher_is_better",
-      "peer_count": 7,
-      "applied_fallback_rule": "same_region",
-      "compatibility": {
-        "scope": "asset",
-        "reporting_period": "2024",
-        "unit": "percent"
-      },
-      "peer_ids": [
-        "A002",
-        "A003",
-        "A004",
-        "A006",
-        "A007",
-        "A008",
-        "A009"
-      ],
-      "benchmark": {
-        "count": 7,
-        "median": 12.0,
-        "mean": 15.285714285714286,
-        "min": 4.0,
-        "max": 30.0
-      },
-      "rank": 4,
-      "percentile": 57.14,
-      "gap_percentile_threshold": 40.0,
-      "gap_to_median": -6.0,
-      "gap_flag": false,
-      "gap_type": null
-    },
-    {
-      "metric": "SCOPE_1_EMISSIONS",
-      "status": "unavailable",
-      "comparability_status": "missing",
-      "reason": "not_disclosed",
-      "gap_type": "disclosure_gap",
-      "gap_flag": null,
-      "peer_count": 0,
-      "applied_fallback_rule": null,
-      "compatibility": {
-        "scope": "asset",
-        "reporting_period": "2024",
-        "unit": "tCO2e"
+      "metric_code": "GREEN_CERT_LEVEL",
+      "standardised_value": null,
+      "canonical_unit": "ORDINAL_0_4",
+      "performance_direction": "HIGHER_IS_BETTER",
+      "comparability_status": "INCOMPLETE_DATA",
+      "benchmark": null,
+      "gap_analysis": {
+        "gap_type": "DISCLOSURE_GAP",
+        "is_flagged": true,
+        "threshold_percentile": 40.0,
+        "recommendation_signal": "GREEN_CERT_LEVEL: not disclosed for 2024; request disclosure to enable benchmarking."
       }
     },
     {
-      "metric": "SCOPE_2_EMISSIONS",
-      "status": "unavailable",
-      "comparability_status": "missing",
-      "reason": "not_disclosed",
-      "gap_type": "disclosure_gap",
-      "gap_flag": null,
-      "peer_count": 0,
-      "applied_fallback_rule": null,
-      "compatibility": {
-        "scope": "asset",
-        "reporting_period": "2024",
-        "unit": "tCO2e"
+      "metric_code": "RENEWABLE_SHARE",
+      "standardised_value": null,
+      "canonical_unit": "percent",
+      "performance_direction": "HIGHER_IS_BETTER",
+      "comparability_status": "INCOMPLETE_DATA",
+      "benchmark": null,
+      "gap_analysis": {
+        "gap_type": "DISCLOSURE_GAP",
+        "is_flagged": true,
+        "threshold_percentile": 40.0,
+        "recommendation_signal": "RENEWABLE_SHARE: not disclosed for 2024; request disclosure to enable benchmarking."
       }
     },
     {
-      "metric": "TOTAL_ENERGY_INTENSITY",
-      "status": "unavailable",
-      "comparability_status": "missing",
-      "reason": "not_disclosed",
-      "gap_type": "disclosure_gap",
-      "gap_flag": null,
-      "peer_count": 0,
-      "applied_fallback_rule": null,
-      "compatibility": {
-        "scope": "asset",
-        "reporting_period": "2024",
-        "unit": "kWh/m2/yr"
+      "metric_code": "SCOPE_1_EMISSIONS",
+      "standardised_value": null,
+      "canonical_unit": "tCO2e",
+      "performance_direction": "LOWER_IS_BETTER",
+      "comparability_status": "INCOMPLETE_DATA",
+      "benchmark": null,
+      "gap_analysis": {
+        "gap_type": "DISCLOSURE_GAP",
+        "is_flagged": true,
+        "threshold_percentile": 40.0,
+        "recommendation_signal": "SCOPE_1_EMISSIONS: not disclosed for 2024; request disclosure to enable benchmarking."
       }
     },
     {
-      "metric": "WASTE_DIVERSION_RATE",
-      "status": "available",
-      "comparability_status": "comparable",
-      "reason": null,
-      "value": 62.0,
-      "unit": "percent",
-      "source_unit": "fraction",
-      "conversion_factor": 100.0,
-      "source": "synthetic-dataset",
-      "direction": "higher_is_better",
-      "peer_count": 5,
-      "applied_fallback_rule": "same_property_type_and_region",
-      "compatibility": {
-        "scope": "asset",
-        "reporting_period": "2024",
-        "unit": "percent"
-      },
-      "peer_ids": [
-        "A002",
-        "A003",
-        "A004",
-        "A005",
-        "A006"
-      ],
-      "benchmark": {
-        "count": 5,
-        "median": 57.99999999999999,
-        "mean": 59.4,
-        "min": 48.0,
-        "max": 70.0
-      },
-      "rank": 3,
-      "percentile": 60.0,
-      "gap_percentile_threshold": 40.0,
-      "gap_to_median": -4.0,
-      "gap_flag": false,
-      "gap_type": null
+      "metric_code": "SCOPE_2_EMISSIONS",
+      "standardised_value": null,
+      "canonical_unit": "tCO2e",
+      "performance_direction": "LOWER_IS_BETTER",
+      "comparability_status": "INCOMPLETE_DATA",
+      "benchmark": null,
+      "gap_analysis": {
+        "gap_type": "DISCLOSURE_GAP",
+        "is_flagged": true,
+        "threshold_percentile": 40.0,
+        "recommendation_signal": "SCOPE_2_EMISSIONS: not disclosed for 2024; request disclosure to enable benchmarking."
+      }
     },
     {
-      "metric": "WATER_INTENSITY",
-      "status": "available",
-      "comparability_status": "comparable",
-      "reason": null,
-      "value": 1.35,
-      "unit": "m3/m2/yr",
-      "source_unit": "m3/m2/yr",
-      "conversion_factor": 1.0,
-      "source": "synthetic-dataset",
-      "direction": "lower_is_better",
-      "peer_count": 5,
-      "applied_fallback_rule": "same_property_type_and_region",
-      "compatibility": {
-        "scope": "asset",
-        "reporting_period": "2024",
-        "unit": "m3/m2/yr"
-      },
-      "peer_ids": [
-        "A002",
-        "A003",
-        "A004",
-        "A005",
-        "A006"
-      ],
-      "benchmark": {
-        "count": 5,
-        "median": 1.45,
-        "mean": 1.432,
-        "min": 1.21,
-        "max": 1.7
-      },
-      "rank": 3,
-      "percentile": 60.0,
-      "gap_percentile_threshold": 40.0,
-      "gap_to_median": -0.1,
-      "gap_flag": false,
-      "gap_type": null
+      "metric_code": "TOTAL_ENERGY_INTENSITY",
+      "standardised_value": null,
+      "canonical_unit": "kWh/m2/yr",
+      "performance_direction": "LOWER_IS_BETTER",
+      "comparability_status": "INCOMPLETE_DATA",
+      "benchmark": null,
+      "gap_analysis": {
+        "gap_type": "DISCLOSURE_GAP",
+        "is_flagged": true,
+        "threshold_percentile": 40.0,
+        "recommendation_signal": "TOTAL_ENERGY_INTENSITY: not disclosed for 2024; request disclosure to enable benchmarking."
+      }
+    },
+    {
+      "metric_code": "WASTE_DIVERSION_RATE",
+      "standardised_value": null,
+      "canonical_unit": "percent",
+      "performance_direction": "HIGHER_IS_BETTER",
+      "comparability_status": "INCOMPLETE_DATA",
+      "benchmark": null,
+      "gap_analysis": {
+        "gap_type": "DISCLOSURE_GAP",
+        "is_flagged": true,
+        "threshold_percentile": 40.0,
+        "recommendation_signal": "WASTE_DIVERSION_RATE: not disclosed for 2024; request disclosure to enable benchmarking."
+      }
+    },
+    {
+      "metric_code": "WATER_INTENSITY",
+      "standardised_value": null,
+      "canonical_unit": "m3/m2/yr",
+      "performance_direction": "LOWER_IS_BETTER",
+      "comparability_status": "INCOMPLETE_DATA",
+      "benchmark": null,
+      "gap_analysis": {
+        "gap_type": "DISCLOSURE_GAP",
+        "is_flagged": true,
+        "threshold_percentile": 40.0,
+        "recommendation_signal": "WATER_INTENSITY: not disclosed for 2024; request disclosure to enable benchmarking."
+      }
     }
   ]
 }

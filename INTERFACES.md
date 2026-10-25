@@ -16,14 +16,21 @@ All paths are relative to `spip-analytics/`.
 python -m uvicorn api:app --app-dir src --port 8000
 ```
 
+All protected routes require `Authorization: Bearer <Cognito access token>`; the
+verified `sub` resolves to one active tenant, and every read returns only the public
+baseline plus that tenant's own rows.
+
 | Method & path | Params | Purpose |
 |---|---|---|
-| `GET /health` | — | Liveness probe |
-| `GET /analysis/{entity_id}` | `scope=asset\|portfolio`, `reporting_year` | Serve `data/synthetic_esg.csv` (or `SPIP_DATA`) in the team's output contract |
-| `POST /analyze` | multipart `file`, `entity_id`, `reporting_year`, `scope` | Analyse an uploaded CSV (team or engine format) in the same contract |
+| `GET /health` | — | Liveness probe; unprotected (ALB) |
+| `GET /entities` | optional `scope=asset\|portfolio` | Discovery: entities visible to this tenant with the reporting years present in the data |
+| `GET /analysis/{entity_id}` | `scope=asset\|portfolio`, `reporting_year` | Serve `data/cleaned/public_esg_baseline.csv` (or `SPIP_DATA`), or PostgreSQL when `SPIP_PUBLIC_DATABASE_URL` is set |
+| `POST /analyze` | multipart `file`, `entity_id`, `reporting_year`, `scope` | Local synchronous upload (unique temp file); not a production upload path |
 
-Errors: `404` entity not found, `422` bad scope / unknown `metric_code` / missing
-`entity_id`. CORS is open (`*`) for the Vite dev server. Response body always matches
+Errors: `401` missing/invalid/expired token, `403` valid account without tenant
+membership, `404` entity not visible to this tenant, `422` bad scope / unknown
+`metric_code` / missing `entity_id` / unreadable CSV. CORS is restricted to
+`SPIP_ALLOWED_ORIGINS` and allows the `Authorization` header. Response body always matches
 `schemas/analytics_output_contract.json` (PR #1): `entity_id`, `entity_name`,
 `tenant_id`, `reporting_year` (int), `peer_cohort{property_type, region, sample_size_n,
 fallback_applied, fallback_reason}`, `metrics[]` with `comparability_status` ∈
@@ -219,7 +226,6 @@ metric availability, and unit convertible to canonical. Otherwise it is excluded
   the Vite dashboard (`GET /analysis/{entity_id}`).
 - Library layer: `analyse_to_contract` (team contract) or `run_gap_analysis` (engine
   contract, richer provenance).
-- Integration artefacts: team-shaped response from the API; engine example in
-  `examples/output.json`.
-- Not integrated: the team's real datasets (`public_esg_baseline.csv`), the React
-  dashboard still on hardcoded data, AI assistant.
+- Integration artefacts: team-shaped response from the API; contract example in
+  `examples/output.json` (generated from the public baseline).
+- Not integrated: the React dashboard still on hardcoded data, AI assistant.

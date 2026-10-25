@@ -86,6 +86,28 @@ def _engine_csv(df: pd.DataFrame) -> str:
     return path
 
 
+ENGINE_COLUMNS = (
+    "entity_id",
+    "scope",
+    "reporting_period",
+    "region",
+    "property_type",
+    "certification",
+    "metric",
+    "value",
+    "unit",
+    "source",
+)
+
+
+def _frame_to_engine_csv(df: pd.DataFrame) -> str:
+    """Write an engine-format DataFrame to a unique temp CSV for the engine seam."""
+    fd, path = tempfile.mkstemp(prefix="spip-engine-", suffix=".csv")
+    os.close(fd)
+    df.reindex(columns=list(ENGINE_COLUMNS)).to_csv(path, index=False)
+    return path
+
+
 def _target_rows(df: pd.DataFrame, entity_id: str, period: str, their: bool) -> pd.DataFrame:
     col = "reporting_year" if their else "reporting_period"
     if col not in df.columns or "entity_id" not in df.columns:
@@ -100,6 +122,7 @@ def _to_contract(
     entity_id: str,
     registry: MetricRegistry,
     peer_rules_path: str | Path,
+    tenant_id: str | None = None,
 ) -> dict:
     their = _is_their_format(df)
     rows = _target_rows(df, entity_id, result["reporting_period"], their)
@@ -233,7 +256,8 @@ def _to_contract(
     return {
         "entity_id": result["entity_id"],
         "entity_name": name or entity_id,
-        "tenant_id": tenant or "PUBLIC",
+        # The authenticated tenant always wins over a client-supplied column.
+        "tenant_id": tenant_id or tenant or "PUBLIC",
         "reporting_year": int(result["reporting_period"]),
         "peer_cohort": {
             "property_type": prop or "",
@@ -253,18 +277,41 @@ def analyse_to_contract(
     peer_rules_path: str | Path,
     reporting_year: int | None = None,
     scope: str = "asset",
+    tenant_id: str | None = None,
 ) -> dict:
-    """Run the engine and project the result onto the team's output contract."""
-    registry = MetricRegistry.from_yaml(metrics_path)
+    """Read a CSV and project the engine result onto the team's output contract."""
     try:
         df = pd.read_csv(data_path)
     except (pd.errors.EmptyDataError, pd.errors.ParserError, UnicodeDecodeError) as exc:
         raise ContractInputError(f"unreadable CSV: {exc}") from None
+    return analyse_dataframe_to_contract(
+        df=df,
+        entity_id=entity_id,
+        metrics_path=metrics_path,
+        peer_rules_path=peer_rules_path,
+        reporting_year=reporting_year,
+        scope=scope,
+        tenant_id=tenant_id,
+    )
 
+
+def analyse_dataframe_to_contract(
+    df: pd.DataFrame,
+    entity_id: str,
+    metrics_path: str | Path,
+    peer_rules_path: str | Path,
+    reporting_year: int | None = None,
+    scope: str = "asset",
+    tenant_id: str | None = None,
+) -> dict:
+    """Same contract projection for an already-loaded long-format DataFrame.
+
+    Used by the database-backed API so the engine keeps its no-database boundary.
+    """
+    registry = MetricRegistry.from_yaml(metrics_path)
     _validate_metric_codes(df, registry)
 
-    tmp = _engine_csv(df) if _is_their_format(df) else None
-    engine_path = tmp or str(data_path)
+    engine_path = _engine_csv(df) if _is_their_format(df) else _frame_to_engine_csv(df)
     period = None if reporting_year is None else str(int(reporting_year))
     try:
         result = run_gap_analysis(
@@ -278,10 +325,9 @@ def analyse_to_contract(
     except ValueError as exc:  # entity not found in this scope/period
         raise EntityNotFound(str(exc)) from None
     finally:
-        if tmp:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
+        try:
+            os.unlink(engine_path)
+        except OSError:
+            pass
 
-    return _to_contract(result, df, entity_id, registry, peer_rules_path)
+    return _to_contract(result, df, entity_id, registry, peer_rules_path, tenant_id)
