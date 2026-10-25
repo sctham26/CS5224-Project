@@ -4,7 +4,7 @@ Prepared 2026-10-23 for the SPIP team. Source branch: `cloud-config`; PR target:
 
 **2026-10-25 update:** [Login module and auth contract](AUTH_CONTRACT.md) supersedes the authentication status below: Cognito is deployed and frontend login/logout/token integration is implemented. Tenant membership and backend authorization remain pending. The cloud frontend now also includes the CSV demo components from frontend branch `f0fe860`. The original branch table below is a dated snapshot. Backend SQL/image CI passed after the test-admin rename in `478fe17`.
 
-**Current API update:** the [API integration guide](API_INTEGRATION.md) supersedes older backend deployment status and routing/migration placeholders in this dated handoff.
+**Current API and membership update (2026-10-25):** the [API integration guide](API_INTEGRATION.md) supersedes older deployment, routing, migration and membership status below. Backend infrastructure is deployed. Alex/Auxane share `spip-team`; Song Sifan uses `spip-songsifan`; Tham Sin Che uses `spip-tham`. All four active memberships were verified using the actual backend resolver/application credentials, including self-only membership RLS. Cognito groups `spip-admin`, `spip-backend` and `spip-customer` record intended roles; backend role enforcement and cross-tenant HTTP/upload E2E tests remain pending. Group assignments are operator-managed, not AWS IAM grants or a tenant-isolation bypass. See the guide for the full mapping and operator procedure. The historical frontend copy in this branch is not the current frontend team's integration source.
 
 ## 1. What is delivered
 

@@ -63,6 +63,23 @@ A Cognito invitation creates an identity, not a tenant assignment. An operator f
 
 The supplied UUID/tenant are validated and SQL values are parameterized. The task uses the migration owner under the table's existing RLS context, not an application endpoint or a browser-selected tenant. Updating an existing membership changes its assignment; review the subject/tenant carefully before running it. No users or memberships are created automatically.
 
+### Provisioned team memberships — 2026-10-25
+
+Alex invited the four Cognito accounts and approved the following assignments. Cloud operations verified their immutable Cognito subjects and explicitly provisioned active memberships:
+
+| Account | Cognito group | Tenant ID |
+| --- | --- | --- |
+| Alex Jin | `spip-admin` | `spip-team` |
+| Auxane Baptiste | `spip-admin` | `spip-team` |
+| Song Sifan | `spip-backend` | `spip-songsifan` |
+| Tham Sin Che | `spip-customer` | `spip-tham` |
+
+Alex and Auxane share a tenant and therefore its tenant-scoped data. Song Sifan and Tham have separate tenants for integration/isolation testing. Do not derive assignments from email addresses or accept tenant overrides from the browser. Membership changes update access; they do not move previously stored tenant data.
+
+**Role enforcement boundary:** Cognito groups were created and assigned through operator actions, outside the current CDK definitions. They record the intended application roles; they do not grant AWS IAM/console, database-owner or migration permissions. The deployed backend currently resolves only subject → active tenant and does not enforce `cognito:groups` as administrator/backend/customer capabilities. In particular, `spip-admin` does not bypass tenant isolation. The backend team must define and enforce any additional role-based actions; frontend visibility alone is insufficient. Obtain a fresh token after group changes.
+
+All four membership tasks exited zero. A separate task using the actual application DB credentials and backend `DbMembershipStore.active_tenant` verified every mapping. It also verified that each subject can SELECT only its own active membership through RLS, and an unset subject sees none. This verifies membership resolution/self-isolation, not cross-tenant business API or upload E2E behavior. No passwords or access tokens are recorded here.
+
 ## Acceptance boundaries
 
 Local tests cover API prefix removal, preserving Authorization/query/method, uncached routing, explicit auth settings, and real backend migrations/owner permissions in disposable PostgreSQL. The unchanged backend suite passes 105 tests in its Linux image. Actual cloud deployment/test evidence is recorded separately below once confirmed. Frontend changes, real-user token acceptance and end-to-end uploaded-data processing must not be inferred solely from health/401 tests.
@@ -77,4 +94,4 @@ Local tests cover API prefix removal, preserving Authorization/query/method, unc
 - API and worker services each have desired=1, running=1, pending=0. The database is PostgreSQL 18.6, single-AZ and not publicly accessible.
 - Direct gateway and CloudFront `GET /health` / `GET /api/health` returned `200 {"status":"ok"}`. Protected `/entities` and `/api/entities` returned 401 with no token and with a deliberately invalid token. Re-run `python3 scripts/verify_api.py` to verify the public transport/negative-auth checks.
 - Automated validation: 21 infrastructure tests, 6 disposable PostgreSQL tests (including actual backend migrations), and 105 unchanged backend tests passed. [Backend CI](https://github.com/sctham26/CS5224-Project/actions/runs/40181924831) passed; frontend publishing was skipped on cloud-config as intended.
-- Real-user access-token acceptance, membership provisioning for actual people, cross-tenant HTTP tests and upload-to-worker-result integration remain acceptance work. No production user or membership was created during deployment. No frontend JavaScript was changed or published.
+- The four approved sandbox memberships and Cognito group assignments above were provisioned after infrastructure deployment and verified through the backend membership resolver/application credentials. Cognito invitations were sent by Alex. Real-user access-token acceptance, role-based backend enforcement, cross-tenant HTTP tests and upload-to-worker-result integration remain acceptance work. No frontend JavaScript was changed or published.
