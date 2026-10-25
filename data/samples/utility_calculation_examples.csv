@@ -1,0 +1,4 @@
+entity_id,entity_name,property_type,reporting_year,input_floor_area,input_floor_area_unit,input_electricity_kwh,input_natural_gas_kwh,input_diesel_litres,diesel_energy_factor_kwh_per_l,ema_grid_ef_kgco2e_per_kwh,gas_ef_kgco2e_per_kwh,diesel_ef_kgco2e_per_litre,expected_gfa_sqm,expected_electricity_eui_kwh_m2_yr,expected_total_energy_intensity_kwh_m2_yr,expected_scope_1_tco2e,expected_scope_2_tco2e,expected_scope_2_carbon_intensity_kgco2e_m2_yr,expected_scope_1_2_carbon_intensity_kgco2e_m2_yr
+TC2_AUDIT_01,Synthetic Office Tower A,OFFICE,2024,50000.0,sqm,6250000.0,0.0,1500.0,10.0,0.402,0.184,2.68,50000.0,125.0,125.3,4.02,2512.5,50.25,50.3304
+TC2_AUDIT_02,Synthetic Retail Mall B,RETAIL,2024,322917.312,sqft,11400000.0,450000.0,2500.0,10.0,0.402,0.184,2.68,30000.0,380.0,395.833333,89.5,4582.8,152.76,155.743333
+TC2_AUDIT_03,Synthetic Hotel C,HOTEL,2024,25000.0,sqm,5500000.0,620000.0,4000.0,10.0,0.402,0.184,2.68,25000.0,220.0,246.4,124.8,2211.0,88.44,93.432

@@ -1,0 +1,156 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SPIPCanonicalAnalyticsOutput",
+  "type": "object",
+  "required": [
+    "entity_id",
+    "entity_name",
+    "tenant_id",
+    "reporting_year",
+    "peer_cohort",
+    "metrics"
+  ],
+  "properties": {
+    "entity_id": {
+      "type": "string",
+      "example": "ALPHA_BLDG_01"
+    },
+    "entity_name": {
+      "type": "string",
+      "example": "Alpha Raffles Tower"
+    },
+    "tenant_id": {
+      "type": "string",
+      "example": "tenant_alpha"
+    },
+    "reporting_year": {
+      "type": "integer",
+      "example": 2025
+    },
+    "peer_cohort": {
+      "type": "object",
+      "required": [
+        "property_type",
+        "region",
+        "sample_size_n",
+        "fallback_applied"
+      ],
+      "properties": {
+        "property_type": {
+          "type": "string",
+          "example": "OFFICE"
+        },
+        "region": {
+          "type": "string",
+          "example": "SG_CBD"
+        },
+        "sample_size_n": {
+          "type": "integer",
+          "description": "Number of comparable peers in cohort. If n < 5, fallback rules trigger region relaxation.",
+          "example": 28
+        },
+        "fallback_applied": {
+          "type": "boolean",
+          "example": false
+        },
+        "fallback_reason": {
+          "type": ["string", "null"],
+          "example": null
+        }
+      }
+    },
+    "metrics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "metric_code",
+          "standardised_value",
+          "canonical_unit",
+          "comparability_status"
+        ],
+        "properties": {
+          "metric_code": {
+            "type": "string",
+            "example": "ENERGY_INTENSITY_EUI"
+          },
+          "standardised_value": {
+            "type": ["number", "null"],
+            "example": 182.5
+          },
+          "canonical_unit": {
+            "type": "string",
+            "example": "kWh/m2/yr"
+          },
+          "performance_direction": {
+            "type": "string",
+            "enum": ["LOWER_IS_BETTER", "HIGHER_IS_BETTER"],
+            "example": "LOWER_IS_BETTER"
+          },
+          "comparability_status": {
+            "type": "string",
+            "enum": ["COMPARABLE", "UNIT_CONVERTED", "BOUNDARY_MISMATCH", "INCOMPLETE_DATA", "ANOMALY_FLAGGED"],
+            "example": "COMPARABLE"
+          },
+          "benchmark": {
+            "type": ["object", "null"],
+            "required": [
+              "peer_median",
+              "relative_rank",
+              "empirical_percentile"
+            ],
+            "properties": {
+              "peer_median": {
+                "type": "number",
+                "example": 132.16
+              },
+              "relative_rank": {
+                "type": "integer",
+                "example": 21
+              },
+              "empirical_percentile": {
+                "type": "number",
+                "description": "Calculated via empirical CDF distribution.",
+                "example": 82.5
+              }
+            }
+          },
+          "gap_analysis": {
+            "type": "object",
+            "required": [
+              "gap_type",
+              "is_flagged"
+            ],
+            "properties": {
+              "gap_type": {
+                "type": "string",
+                "enum": ["PERFORMANCE_GAP", "DISCLOSURE_GAP", "NONE"],
+                "example": "PERFORMANCE_GAP"
+              },
+              "is_flagged": {
+                "type": "boolean",
+                "example": true
+              },
+              "threshold_percentile": {
+                "type": "number",
+                "example": 70.0
+              },
+              "target_2030_value": {
+                "type": "number",
+                "example": 110.0
+              },
+              "delta_to_peer_median": {
+                "type": "number",
+                "example": 50.34
+              },
+              "recommendation_signal": {
+                "type": "string",
+                "example": "Energy Intensity exceeds bottom quartile threshold; prioritize chiller plant efficiency audit."
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
