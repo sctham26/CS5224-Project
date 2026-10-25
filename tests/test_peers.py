@@ -3,13 +3,15 @@ from pathlib import Path
 import pytest
 
 from harmonisation import (
+    HarmonisedMetric,
+    HarmonisedRecord,
     harmonise_records,
     load_records,
     partition_by_scope,
 )
 from metrics import MetricRegistry
 from peers import PeerGroup, PeerSelector, load_peer_rules
-from schemas import ReportingScope
+from schemas import MetricDirection, ReportingScope
 
 RULES = "config/peer_rules.yaml"
 EUI = "ENERGY_INTENSITY_EUI"
@@ -86,3 +88,60 @@ def test_selection_is_deterministic(selector, assets):
     g1 = selector.select(target, assets, EUI)
     g2 = selector.select(target, assets, EUI)
     assert g1.peer_ids == g2.peer_ids
+
+
+def _rec(eid: str, period: str, ptype: str, region: str) -> HarmonisedRecord:
+    return HarmonisedRecord(
+        entity_id=eid,
+        scope=ReportingScope.ASSET,
+        reporting_period=period,
+        region=region,
+        property_type=ptype,
+        certification=None,
+        metrics={
+            EUI: HarmonisedMetric(
+                value=100.0,
+                canonical_unit="kWh/m2/yr",
+                direction=MetricDirection.LOWER_IS_BETTER,
+                source_unit="kWh/m2/yr",
+                conversion_factor=1.0,
+            )
+        },
+        dropped={},
+    )
+
+
+def _target(selector, candidates):
+    # target: asset / OFFICE / UK / 2024; never counted as its own peer.
+    target = _rec("TGT", "2024", "OFFICE", "UK")
+    return target, selector.select(target, candidates, EUI)
+
+
+def test_other_years_never_rescue_small_cohort(selector):
+    # Same type/region has only 3 peers in 2024; 10 exist in 2023.
+    # Reporting-period compatibility is strict: 2023 data must not be borrowed.
+    candidates = [_rec(f"E{i}", "2024", "OFFICE", "UK") for i in range(3)]
+    candidates += [_rec(f"Y{i}", "2023", "OFFICE", "UK") for i in range(10)]
+    target, group = _target(selector, candidates)
+    assert group.unavailable_reason == "insufficient_peers"
+    assert group.peer_ids == ()
+    assert group.compatibility["reporting_period"] == "2024"
+
+
+def test_region_relaxes_before_property_type(selector):
+    # 4 same type+region (<5) but 10 in region -> same_region wins over type-only.
+    candidates = [_rec(f"A{i}", "2024", "OFFICE", "UK") for i in range(4)]
+    candidates += [_rec(f"B{i}", "2024", "RETAIL", "UK") for i in range(6)]
+    _, group = _target(selector, candidates)
+    assert group.applied_rule == "same_region"
+    assert len(group.peer_ids) == 10
+
+
+def test_property_type_rule_when_region_too_small(selector):
+    # region cohort 4 <5 (loses to rule 2), type cohort across regions 5 -> rule 3.
+    candidates = [_rec(f"A{i}", "2024", "OFFICE", "UK") for i in range(3)]
+    candidates += [_rec("X0", "2024", "OFFICE", "US"), _rec("X1", "2024", "OFFICE", "US")]
+    candidates += [_rec("B0", "2024", "RETAIL", "UK")]
+    _, group = _target(selector, candidates)
+    assert group.applied_rule == "same_property_type"
+    assert len(group.peer_ids) == 5

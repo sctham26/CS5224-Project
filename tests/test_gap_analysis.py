@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from gap_analysis import run_gap_analysis
+from schemas import ReportingScope
 
 DATA = "data/synthetic_esg.csv"
 METRICS = "config/metrics.yaml"
@@ -122,6 +123,26 @@ def test_default_period_is_latest_for_multi_period_entity():
         data_path=DATA, metrics_path=METRICS, peer_rules_path=RULES, entity_id="A003"
     )
     assert result["reporting_period"] == "2024"
+
+
+def test_insufficient_peers_yields_unavailable_benchmark():
+    # P001 renewable_share: no fallback rule reaches 5 peers in portfolio scope.
+    result = run_gap_analysis(
+        data_path=DATA,
+        metrics_path=METRICS,
+        peer_rules_path=RULES,
+        entity_id="P001",
+        scope=ReportingScope.PORTFOLIO,
+    )
+    entry = next(m for m in result["metrics"] if m["metric"] == RENEW)
+    assert entry["status"] == "unavailable"
+    assert entry["reason"] == "insufficient_peers"
+    # Benchmark unavailable is not an entity gap: nothing flagged either way.
+    assert entry["gap_type"] is None
+    assert entry["gap_flag"] is None
+    assert entry["peer_count"] < 5
+    assert RENEW not in result["summary"]["performance_gaps"]
+    assert RENEW not in result["summary"]["disclosure_gaps"]
 
 
 def test_undisclosed_metric_is_disclosure_gap():
