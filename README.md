@@ -55,6 +55,12 @@ two boundary modules above.
   `app.user_sub`, and fail closed when the context is unset.
 - **CORS** is limited to `SPIP_ALLOWED_ORIGINS` and allows the `Authorization` header.
 
+**Role capabilities (deliberate boundary)**: `cognito:groups` is recorded but grants no
+extra capability — `spip-admin` does not bypass tenant isolation, and every route is a
+tenant-scoped data operation, so no group-based branch exists to abuse. When the first
+genuinely privileged endpoint appears, add a static `group → allowed routes` table plus a
+test for "wrong group 403 / right group 200" rather than scattering admin checks.
+
 **Ownership (confirmed with Jin, 2026-10-25)**: the cloud team owns authentication plus
 the authorisation *contract* and writes `tenant_membership`; the backend enforces
 authorisation (per-request tenant scoping + RLS context) and owns **data import**. The
@@ -218,6 +224,27 @@ team's `docs/metric_dictionary.csv` (PR #1), e.g. `ENERGY_INTENSITY_EUI` / `kWh/
 - @Auxane / @Jin: worker `worker_command` = `python src/worker.py` (or `python -m worker`
   with `src` on `PYTHONPATH`); keep queue visibility aligned with
   `SPIP_JOB_LEASE_SECONDS`. DLQ reconciliation can run as a scheduled ECS task with
-  `python src/worker.py --reconcile-dlq`. Also still open: is the browser-facing `/api`
-  prefix stripped at CloudFront, or should the HTTP API routes carry it? (The gateway
-  currently defines `/uploads`, `/jobs`, ... with no prefix.)
+  `python src/worker.py --reconcile-dlq`.
+
+- **Resolved (2026-10-25)**: CloudFront keeps the browser-facing `/api` prefix and strips
+  it, the gateway routes are unprefixed, and ECS passes `SPIP_API_PREFIX=""`. The API
+  reads that variable ([api.py](src/api.py#L61)) and `/health` stays unprefixed for the
+  ALB probe. Deployed migrations `001`–`004` and the baseline import (12,767
+  observations) exited zero.
+- **Real signed-in acceptance passed (2026-10-25)**: with a Cognito access token from the
+  hosted UI, `GET /api/entities?scope=asset` returned 200 with the imported baseline
+  (real `SG_...` IDs, years 2022–2025) and `GET /api/analysis/SG_228218_LATEST_6?scope=
+  asset&reporting_year=2024` returned 200 — proving prefix stripping, JWKS signature
+  validation, `sub` → tenant resolution and the PostgreSQL read path in one call.
+- **Upload path defect found by live acceptance (2026-10-25, fixed)**: the presigned PUT was
+  generated with Signature V2, and the tenant bucket is SSE-KMS, so S3 returned
+  `400 InvalidArgument — Requests specifying Server Side Encryption with AWS KMS managed
+  keys require AWS Signature Version 4`. [jobs.py](src/jobs.py#L351-L366) now builds the
+  presign client with `s3v4` + virtual addressing, and
+  [test_presign_sigv4.py](tests/test_presign_sigv4.py) locks it. **This needs an image
+  rebuild before `/uploads` can succeed in the sandbox**; `POST /uploads` itself already
+  returns 201 and writes the expected `tenants/<tenant>/uploads/<uuid>.csv` key.
+- **Still open**: cross-tenant HTTP checks need private rows in another tenant (the public
+  baseline is visible to every tenant, so a 404 cannot be demonstrated yet); upload →
+  worker → result end to end ([scripts/e2e_upload.ps1](scripts/e2e_upload.ps1) drives it)
+  once the rebuilt image is deployed; and the `cognito:groups` decision below.

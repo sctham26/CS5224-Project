@@ -352,8 +352,17 @@ class S3Uploader:
     def client(self):
         if self._client is None:
             import boto3  # lazy: local runs do not need AWS SDK
+            from botocore.config import Config
 
-            self._client = boto3.client("s3", region_name=os.environ.get("AWS_REGION"))
+            # Signature V4 is mandatory: the tenant bucket uses SSE-KMS, and S3 rejects
+            # SigV2 presigned PUTs against KMS-encrypted buckets with
+            # "Requests specifying Server Side Encryption with AWS KMS managed keys
+            # require AWS Signature Version 4".
+            self._client = boto3.client(
+                "s3",
+                region_name=os.environ.get("AWS_REGION"),
+                config=Config(signature_version="s3v4", s3={"addressing_style": "virtual"}),
+            )
         return self._client
 
     def presign(self, tenant_id: str) -> dict:
