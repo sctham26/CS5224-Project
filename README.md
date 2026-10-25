@@ -244,7 +244,13 @@ team's `docs/metric_dictionary.csv` (PR #1), e.g. `ENERGY_INTENSITY_EUI` / `kWh/
   [test_presign_sigv4.py](tests/test_presign_sigv4.py) locks it. **This needs an image
   rebuild before `/uploads` can succeed in the sandbox**; `POST /uploads` itself already
   returns 201 and writes the expected `tenants/<tenant>/uploads/<uuid>.csv` key.
-- **Still open**: cross-tenant HTTP checks need private rows in another tenant (the public
-  baseline is visible to every tenant, so a 404 cannot be demonstrated yet); upload →
-  worker → result end to end ([scripts/e2e_upload.ps1](scripts/e2e_upload.ps1) drives it)
-  once the rebuilt image is deployed; and the `cognito:groups` decision below.
+- **Upload → worker → result closed (2026-10-25)**: `POST /api/uploads` 201 → presigned `PUT`
+  200 (URL now carries `X-Amz-Algorithm=AWS4-HMAC-SHA256`) → `POST /api/jobs` 202
+  (`QUEUED`) → `GET /api/jobs/{id}` `SUCCEEDED` in ~2 s with the full analysis payload
+  inline (11 metrics, `peer_cohort` OFFICE/SG n=239, 3 benchmarks, 8 disclosure gaps).
+- **Tenant isolation proven at HTTP level (2026-10-25)**: submitting another tenant's
+  `upload_key` (`tenants/spip-tham/...`) returns `404 {"detail":"upload_key not found"}`
+  instead of leaking its existence. Entity-level isolation still needs private rows in a
+  second tenant before a `/analysis/{id}` 404 can be demonstrated.
+- **Still open**: the `cognito:groups` decision below (currently a written boundary, no
+  group-based code path).
