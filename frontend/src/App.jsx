@@ -1,46 +1,112 @@
 import PropertyComparison from './components/PropertyComparison'
 import CsvUpload from './components/CsvUpload'
+import EntitySelector from './components/EntitySelector'
+import {
+  getDefaultReportingYear,
+  getReportingYears
+} from './components/entityUtils'
 import { useState, useEffect } from 'react'
 import './App.css'
 
+const API_BASE_URL = 'http://localhost:8000'
 
 function App() {
   // Remember which page the user selected
   const [currentPage, setCurrentPage] = useState('dashboard')
 
 
-  // Selected property and reporting year
-  const [selectedEntity, setSelectedEntity] = useState('A001')
-  const [selectedYear, setSelectedYear] = useState('2024')
-
-  // Provisional property IDs for frontend testing
-  const availableEntities = [
-    'A001',
-    'A002',
-    'A003',
-    'A004',
-    'A005',
-    'A006'
-  ]
-
-
-  // Retrieve ESG analytics data from the Python Analytics API
-  const [analyticsData, setAnalyticsData] = useState(null)
-  const [analyticsLoading, setAnalyticsLoading] = useState(true)
-  const [analyticsError, setAnalyticsError] = useState(null)
+  const [entities, setEntities] = useState([])
+  const [entitiesLoading, setEntitiesLoading] = useState(true)
+  const [entitiesError, setEntitiesError] = useState(null)
+  const [selectedEntity, setSelectedEntity] = useState('')
+  const [selectedYear, setSelectedYear] = useState('')
 
   useEffect(() => {
     const controller = new AbortController()
 
+    async function loadEntities() {
+      try {
+        setEntitiesLoading(true)
+        setEntitiesError(null)
+
+        const response = await fetch(`${API_BASE_URL}/entities?scope=asset`, {
+          signal: controller.signal
+        })
+
+        if (!response.ok) {
+          throw new Error(`Entities API returned HTTP ${response.status}`)
+        }
+
+        const data = await response.json()
+        if (
+          !Array.isArray(data?.entities) ||
+          data.entities.some(
+            (entity) =>
+              !entity ||
+              typeof entity.entity_id !== 'string' ||
+              entity.entity_id.trim() === ''
+          )
+        ) {
+          throw new Error('Entities API returned an invalid entity list')
+        }
+
+        if (!controller.signal.aborted) {
+          setEntities(data.entities)
+          const firstEntity = data.entities[0]
+          setSelectedEntity(firstEntity?.entity_id ?? '')
+          setSelectedYear(getDefaultReportingYear(firstEntity))
+        }
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          setEntitiesError(error.message)
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setEntitiesLoading(false)
+        }
+      }
+    }
+
+    loadEntities()
+
+    return () => controller.abort()
+  }, [])
+
+  // Retrieve ESG analytics data from the Python Analytics API
+  const [analyticsResult, setAnalyticsResult] = useState(null)
+  const selectedEntityDetails = entities.find(
+    (entity) => entity.entity_id === selectedEntity
+  )
+  const selectedReportingYears = getReportingYears(selectedEntityDetails)
+  const analyticsRequestKey = JSON.stringify([selectedEntity, selectedYear])
+  const hasAnalyticsSelection =
+    !entitiesLoading &&
+    !entitiesError &&
+    selectedEntityDetails &&
+    selectedReportingYears.includes(selectedYear)
+  const currentAnalyticsResult =
+    analyticsResult?.key === analyticsRequestKey ? analyticsResult : null
+  const analyticsData = currentAnalyticsResult?.data
+  const analyticsError = currentAnalyticsResult?.error
+  const analyticsLoading = Boolean(hasAnalyticsSelection && !currentAnalyticsResult)
+
+  useEffect(() => {
+    const entity = entities.find(
+      (candidate) => candidate.entity_id === selectedEntity
+    )
+    const reportingYears = getReportingYears(entity)
+
+    if (entitiesLoading || entitiesError || !entity || !reportingYears.includes(selectedYear)) {
+      return undefined
+    }
+
+    const controller = new AbortController()
+    const requestKey = JSON.stringify([selectedEntity, selectedYear])
+
     async function loadAnalytics() {
       try {
-        setAnalyticsLoading(true)
-        setAnalyticsData(null)
-        setAnalyticsError(null)
-
-        
         const response = await fetch(
-          `http://localhost:8000/analysis/${encodeURIComponent(selectedEntity)}?scope=asset&reporting_year=${encodeURIComponent(selectedYear)}`,
+          `${API_BASE_URL}/analysis/${encodeURIComponent(selectedEntity)}?scope=asset&reporting_year=${encodeURIComponent(selectedYear)}`,
           { signal: controller.signal }
         )
 
@@ -52,14 +118,16 @@ function App() {
         }
 
         const data = await response.json()
-        setAnalyticsData(data)
-      } catch (error) {
-        if (error.name !== 'AbortError') {
-          setAnalyticsError(error.message)
-        }
-      } finally {
         if (!controller.signal.aborted) {
-          setAnalyticsLoading(false)
+          setAnalyticsResult({ key: requestKey, data, error: null })
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setAnalyticsResult({
+            key: requestKey,
+            data: null,
+            error: error.message
+          })
         }
       }
     }
@@ -67,7 +135,21 @@ function App() {
     loadAnalytics()
 
     return () => controller.abort()
-  }, [selectedEntity, selectedYear])
+  }, [
+    entities,
+    entitiesError,
+    entitiesLoading,
+    selectedEntity,
+    selectedYear
+  ])
+
+  function selectDashboardEntity(entityId) {
+    const entity = entities.find(
+      (candidate) => candidate.entity_id === entityId
+    )
+    setSelectedEntity(entityId)
+    setSelectedYear(getDefaultReportingYear(entity))
+  }
 
   // Find the energy intensity metric in the API response
   const energyMetric = analyticsData?.metrics?.find(
@@ -118,21 +200,15 @@ function App() {
             <div className="comparison-selectors dashboard-selectors">
 
               <div>
-                <label htmlFor="selectedEntity">
-                  Select Property
-                </label>
-
-                <select
+                <EntitySelector
                   id="selectedEntity"
+                  label="Select Property"
+                  entities={entities}
                   value={selectedEntity}
-                  onChange={(e) => setSelectedEntity(e.target.value)}
-                >
-                  {availableEntities.map((entityId) => (
-                    <option key={entityId} value={entityId}>
-                      {entityId}
-                    </option>
-                  ))}
-                </select>
+                  onChange={selectDashboardEntity}
+                  disabled={entitiesLoading || Boolean(entitiesError)}
+                  loading={entitiesLoading}
+                />
               </div>
 
               <div>
@@ -143,13 +219,53 @@ function App() {
                 <select
                   id="selectedYear"
                   value={selectedYear}
-                  onChange={(e) => setSelectedYear(e.target.value)}
+                  onChange={(event) => setSelectedYear(event.target.value)}
+                  disabled={
+                    entitiesLoading ||
+                    Boolean(entitiesError) ||
+                    selectedReportingYears.length === 0
+                  }
                 >
-                  <option value="2024">2024</option>
+                  {selectedReportingYears.length === 0 && (
+                    <option value="">No reporting years available</option>
+                  )}
+                  {selectedReportingYears.map((year) => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
                 </select>
               </div>
 
             </div>
+
+            {entitiesLoading && (
+              <div className="info-box" role="status">
+                Loading available properties...
+              </div>
+            )}
+
+            {entitiesError && (
+              <div className="info-box">
+                <p className="api-error">
+                  Unable to retrieve properties: {entitiesError}
+                </p>
+                <p>Please check that the Python Analytics API is running on port 8000.</p>
+              </div>
+            )}
+
+            {!entitiesLoading && !entitiesError && entities.length === 0 && (
+              <div className="info-box">
+                The Analytics API did not return any properties.
+              </div>
+            )}
+
+            {!entitiesLoading &&
+              !entitiesError &&
+              selectedEntityDetails &&
+              selectedReportingYears.length === 0 && (
+                <div className="info-box">
+                  No reporting years are available for this property.
+                </div>
+              )}
 
 
             {analyticsLoading && (
@@ -173,7 +289,8 @@ function App() {
             {!analyticsLoading && !analyticsError && analyticsData && (
               <>
                 <p className="subtitle">
-                  {analyticsData.entity_name} |
+                  {analyticsData.entity_name || selectedEntity}
+                  {' '}({analyticsData.entity_id || selectedEntity}) |
                   Reporting Year: {analyticsData.reporting_year}
                 </p>
 
@@ -360,7 +477,11 @@ function App() {
 
         
         {currentPage === 'comparison' && (
-          <PropertyComparison />
+          <PropertyComparison
+            entities={entities}
+            entitiesLoading={entitiesLoading}
+            entitiesError={entitiesError}
+          />
         )}
 
 

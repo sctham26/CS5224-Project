@@ -29,21 +29,25 @@ runner or test script is currently defined.
 
 ### ESG Dashboard
 
-The dashboard lets users select a property from the provisional IDs `A001`
-through `A006` and displays analytics for reporting year `2024`. It shows the
-energy intensity metric and its peer median, percentile, and gap status, plus
-peer-cohort details, an ESG metrics table, and flagged gap-analysis
-recommendations when present. These values are read from the Analytics API;
-loading and request-error states are displayed in the UI.
+The dashboard loads properties from `GET /entities` and provides searchable
+property and reporting-year selectors. Property options show the building name
+and entity ID, and the year options come from that entity's
+`reporting_years`; a newly selected property defaults to its
+`latest_reporting_year` when available. It shows the energy intensity metric
+and its peer median, percentile, and gap status, plus peer-cohort details, an
+ESG metrics table, and flagged gap-analysis recommendations when present.
+Loading, empty-list, missing-year, and request-error states are displayed in
+the UI.
 
 ### Property Comparison Tool
 
-The comparison page lets users choose two different properties from `A001`
-through `A006`, reporting year `2024`, and an ESG metric. It retrieves both
-properties from the Analytics API and displays the metric values, a chart and
-a comparison summary when the selected values are comparable. It displays an
-unavailable message instead of presenting a direct numerical comparison when
-the selected metric is missing or incompatible.
+The comparison page lets users choose two different properties from the same
+API-provided searchable property list, a reporting year shared by both
+properties, and an ESG metric. It retrieves both properties from the Analytics
+API and displays the metric values, a chart and a comparison summary when the
+selected values are comparable. It displays an unavailable message instead of
+presenting a direct numerical comparison when the selected metric is missing
+or incompatible.
 
 ### CSV upload interface
 
@@ -100,13 +104,20 @@ requests from that origin (CORS).
 The source currently makes `GET` requests in these forms:
 
 ```
+http://localhost:8000/entities
 http://localhost:8000/analysis/{entityId}?scope=asset&reporting_year={year}
 ```
 
+- The entity-list response contains `count`, `tenant_id`, and `entities`.
+  Each entity provides `entity_id`, `entity_name`, `postal_code`,
+  `property_type`, `region`, `scope`, `reporting_years`, and
+  `latest_reporting_year`. The UI uses the entity IDs and reporting years
+  returned by the API and does not hardcode tenant identity.
 - `{entityId}` is URL-encoded by the client. The dashboard sends the selected
-  provisional ID; the comparison page sends one request for each selected ID.
+  `entity_id`; the comparison page sends one request for each selected ID.
 - `scope` is set to `asset`.
-- `reporting_year` is set to the selected year, currently `2024`.
+- `reporting_year` is selected from the entity's available years; comparison
+  only offers years present for both selected entities.
 - A non-success HTTP response is treated as an error; successful responses are
   read as JSON.
 
@@ -148,8 +159,8 @@ not part of the locally verified frontend–FastAPI analytics integration.
 
 Other current dependencies and limitations:
 
-- The property IDs and reporting year are provisional/fixed frontend choices;
-  the UI does not fetch a property list or offer other reporting years.
+- The property list and reporting years are fetched from the local Analytics
+  API when the frontend loads.
 - Analytics requests use a hard-coded local API base URL. No environment-based
   API configuration or Vite proxy is configured.
 - Analytics data is required to display dashboard and comparison results; the
