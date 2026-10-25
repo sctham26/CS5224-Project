@@ -63,7 +63,7 @@ result: dict = run_gap_analysis(
     metrics_path="config/metrics.yaml",        # required: metric dictionary
     peer_rules_path="config/peer_rules.yaml",  # required: peer fallback rules
     entity_id="A001",                          # required: target entity
-    reporting_period="2024",                   # optional: defaults to first record
+    reporting_period="2024",                   # optional; defaults to the latest period
     scope=ReportingScope.ASSET,                # optional: asset (default) | portfolio
 )
 ```
@@ -74,7 +74,7 @@ result: dict = run_gap_analysis(
 | `metrics_path` | `str \| Path` | yes | YAML, see §2.2 |
 | `peer_rules_path` | `str \| Path` | yes | YAML, see §2.3 |
 | `entity_id` | `str` | yes | Target entity ID |
-| `reporting_period` | `str \| None` | no | Required when an entity has multiple periods |
+| `reporting_period` | `str \| None` | no | Omitted = entity's latest period analysed |
 | `scope` | `ReportingScope` | no | `ASSET` (default) or `PORTFOLIO` |
 
 Raises `ValueError` if the entity is absent from that scope.

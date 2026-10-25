@@ -8,7 +8,7 @@ frontend or AI-service dependencies.
 
 ```powershell
 pip install -r requirements.txt
-python -m pytest -q                  # 58 tests (src/ resolved via pytest pythonpath)
+python -m pytest -q                  # 66 tests (src/ resolved via pytest pythonpath)
 python examples/run_example.py       # writes examples/output.json
 # HTTP API for the dashboard (team contract output):
 python -m uvicorn api:app --app-dir src --port 8000
@@ -42,7 +42,8 @@ Public callable API and the inputs this engine needs from others:
   metric carries `comparability_status` (`comparable` / `incompatible` / `missing`).
   Missing and incompatible observations are retained as unavailable, never forced into
   a comparison.
-- **Determinism**: peer IDs are sorted; percentile uses target-inclusive ranks.
+- **Determinism**: peer IDs are sorted; percentile uses target-inclusive ranks. When no
+  reporting period is specified, the entity's latest period is analysed.
 - **Gap sign**: `gap_to_median > 0` means improvement is needed to reach the peer
   median; `<= 0` means already at or better than median.
 - **Gap flagging** (design §1.3): `percentile` is direction-aware (100 = best), so a
@@ -69,7 +70,7 @@ concrete, configurable position while leaving the business choice open:
    asset characteristics (`property_type`, `region`), not company type or portfolio
    characteristics. Asset and portfolio records are partitioned and never mixed. Whether
    the final peer taxonomy should also include company/certification dimensions is a
-   team decision — see assumption 5 below.
+   team decision — see assumption 3 below.
 2. **Peer-group fallback policy.** Specified in
    [config/peer_rules.yaml](config/peer_rules.yaml): minimum peer-group size is **5**
    (excluding the target). The relaxation order follows the team's output contract
@@ -81,19 +82,21 @@ team's `docs/metric_dictionary.csv` (PR #1), e.g. `ENERGY_INTENSITY_EUI` / `kWh/
 
 ## Assumptions requiring confirmation with real ESG datasets
 
-1. ~~Metric list and canonical units are placeholders~~ — now aligned to the team's
-   metric dictionary (PR #1); pending merge confirmation.
-2. ~~Fallback order needs review~~ — aligned to the team's contract
-   (`type+region → region → type → all`, region first).
-3. Reporting-period compatibility is exact-string matching (`"2024"`); team CSV uses
+1. Reporting-period compatibility is exact-string matching (`"2024"`); team CSV uses
    `reporting_year` (int) mapped to the same matcher. Confirm partial-period overlap.
-4. Real team datasets (`public_esg_baseline.csv` etc.) not yet wired in; the adapter
+2. Real team datasets (`public_esg_baseline.csv` etc.) not yet wired in; the adapter
    accepts their format, tests use fixtures in `tests/`.
-5. Certification is loaded but not yet used in peer selection — confirm whether it is a
+3. Certification is loaded but not yet used in peer selection — confirm whether it is a
    peer dimension.
-6. Dashboard/API: HTTP layer exists (`src/api.py`); the React dashboard still reads
+4. Dashboard/API: HTTP layer exists (`src/api.py`); the React dashboard still reads
    hardcoded data — wire it to `GET /analysis/{entity_id}`.
-7. `gap_percentile_threshold: 40` per metric is a placeholder — confirm the agreed gap
+5. `gap_percentile_threshold: 40` per metric is a placeholder — confirm the agreed gap
    threshold (and whether it differs by metric or portfolio).
-8. `source` provenance is a free-text field — confirm the required granularity
+6. `source` provenance is a free-text field — confirm the required granularity
    (report/page/dataset) for the common schema.
+
+Needed from you:
+
+- @Michael — (a) Confirm whether PR #2 changes the Analytics API request/response format and whether my review is needed; (b) verify the frontend handles peer group < 5, missing data and non-comparable metrics correctly.
+- @Auxane / @Jin — (a) Does an uploaded ESG CSV go through harmonisation and get persisted to PostgreSQL for the Analytics API to query? (b) Does the API need to adapt Cognito JWT, tenant ID and PostgreSQL RLS?
+- @myrilla12 / all — PR #1 has been open since 10-17 with zero conflicts. `public_esg_baseline.csv` (building-level electricity EUI) exists only in that branch, so switching the API to real data is blocked on merging it. Please confirm/merge, or grant me merge access and I'll take care of it.
