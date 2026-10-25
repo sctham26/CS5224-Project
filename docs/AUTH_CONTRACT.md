@@ -56,7 +56,7 @@ For all protected API routes, the browser sends:
 Authorization: Bearer <Cognito access token>
 ```
 
-With `enable_auth=true` and runtime enabled, CDK binds API Gateway to this pool's issuer, browser client ID and `spip/access` scope. Existing API paths/result shapes remain unchanged. The JWT-protected runtime is still undeployed; the current local FastAPI branch has no authentication implementation. A UI gate alone does not secure an API.
+With `enable_auth=true` and runtime enabled, CDK binds API Gateway to this pool's issuer, browser client ID and `spip/access` scope. Existing API paths/result shapes remain unchanged. The JWT-protected runtime is now deployed with backend commit `27cc9fb`, which implements token checks and database membership lookup; see [cloud API integration](API_INTEGRATION.md) for current verification. A UI gate alone does not secure an API.
 
 Backend must:
 

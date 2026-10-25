@@ -23,7 +23,7 @@ All protected endpoints require `Authorization: Bearer <access-token>`. The API 
 | `POST /api/jobs` | Submit an ingestion or analysis request | `202`: stable job ID and status URL |
 | `GET /api/jobs/{job_id}` | Read the authorised job's persistent state/result | `200`; other tenants receive `404` |
 | `GET /api/analysis/{entity_id}` | Existing read API, with tenant-aware backend lookup added | Existing analysis result contract |
-| `GET /api/health` | Existing liveness endpoint | JWT-protected externally; the internal ALB probes `/health` without JWT; no proof of database readiness |
+| `GET /api/health` | Existing liveness endpoint | Public minimal liveness, including the internal ALB probe; no proof of database readiness |
 
 The existing synchronous `/analyze` can remain for local compatibility. Do not expose its current unauthenticated form as a production upload path. The API must also authorise existing entity-based reads; the new jobs route alone does not secure them.
 

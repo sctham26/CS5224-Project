@@ -4,6 +4,8 @@ Prepared 2026-10-23 for the SPIP team. Source branch: `cloud-config`; PR target:
 
 **2026-10-25 update:** [Login module and auth contract](AUTH_CONTRACT.md) supersedes the authentication status below: Cognito is deployed and frontend login/logout/token integration is implemented. Tenant membership and backend authorization remain pending. The cloud frontend now also includes the CSV demo components from frontend branch `f0fe860`. The original branch table below is a dated snapshot. Backend SQL/image CI passed after the test-admin rename in `478fe17`.
 
+**Current API update:** the [API integration guide](API_INTEGRATION.md) supersedes older backend deployment status and routing/migration placeholders in this dated handoff.
+
 ## 1. What is delivered
 
 | Component | Implemented | Verification / deployment |

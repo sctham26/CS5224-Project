@@ -66,3 +66,15 @@ The supplied UUID/tenant are validated and SQL values are parameterized. The tas
 ## Acceptance boundaries
 
 Local tests cover API prefix removal, preserving Authorization/query/method, uncached routing, explicit auth settings, and real backend migrations/owner permissions in disposable PostgreSQL. The unchanged backend suite passes 105 tests in its Linux image. Actual cloud deployment/test evidence is recorded separately below once confirmed. Frontend changes, real-user token acceptance and end-to-end uploaded-data processing must not be inferred solely from health/401 tests.
+
+
+## Confirmed sandbox deployment — 2026-10-25
+
+- `BackendDataStack`, `BackendOperationsStack`, `BackendRuntimeStack` deployed; `InfraStack` updated and CloudFront reports `Deployed`. Cognito uses the existing pool/client without recreating accounts.
+- Gateway endpoint: `https://d7n96omm4j.execute-api.ap-southeast-1.amazonaws.com`. Browser API base remains `https://d10rc41o4pb0h.cloudfront.net/api`.
+- Image: `825990809862.dkr.ecr.ap-southeast-1.amazonaws.com/spip-backend@sha256:56bdc19a2258e2151bf65d414e279878d5c3a924f63a982c0ca4bde6b76892f2`; backend `27cc9fb`, cloud-support hash `3656d9c835efcd1784bc93a1900dd1f8b2791deafc28efb223a3567afc4e56b8`.
+- Database bootstrap, migration task, baseline dry run and baseline import exited zero. Logs confirm all four migrations and 12,767 upserted observations. A separate task using the actual application credentials confirmed the public row count, no public INSERT privilege, no tenant BYPASSRLS/table ownership, forced RLS on both tenant business tables, and no membership UPDATE privilege.
+- API and worker services each have desired=1, running=1, pending=0. The database is PostgreSQL 18.6, single-AZ and not publicly accessible.
+- Direct gateway and CloudFront `GET /health` / `GET /api/health` returned `200 {"status":"ok"}`. Protected `/entities` and `/api/entities` returned 401 with no token and with a deliberately invalid token. Re-run `python3 scripts/verify_api.py` to verify the public transport/negative-auth checks.
+- Automated validation: 21 infrastructure tests, 6 disposable PostgreSQL tests (including actual backend migrations), and 105 unchanged backend tests passed. [Backend CI](https://github.com/sctham26/CS5224-Project/actions/runs/40181924831) passed; frontend publishing was skipped on cloud-config as intended.
+- Real-user access-token acceptance, membership provisioning for actual people, cross-tenant HTTP tests and upload-to-worker-result integration remain acceptance work. No production user or membership was created during deployment. No frontend JavaScript was changed or published.
