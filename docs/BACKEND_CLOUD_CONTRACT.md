@@ -1,5 +1,7 @@
 # Backend–cloud integration contract — proposed v0.1
 
+**2026-10-25 integration update:** This remains the original application proposal. For deployed path mapping, authentication, image/migration operations and frontend responsibilities, use [API integration](API_INTEGRATION.md). Backend commit `27cc9fb` now implements its own upload/job payloads using `upload_key`; use that backend's interface/source for payload details. Cloud routing does not rename those fields.
+
 **Status: application interfaces proposed for team review, not implemented or deployed.** Infrastructure templates and a database bootstrap utility are now available in [Backend deployment](BACKEND_DEPLOYMENT.md); this does not implement the application endpoints. Prepared 2026-10-23 against `ccproj/backend-analysis` commit `721d3ab`. A fresh fetch found no newer backend commit. This document reserves infrastructure-facing interfaces; it does not prescribe ESG file columns, cleaning rules, business tables, or analytical calculations. Examples use fabricated identifiers and placeholder URLs/resources.
 
 ## 1. Existing backend and compatibility

@@ -42,6 +42,9 @@ class BackendRuntimeStack(Stack):
             "SPIP_UPLOAD_URL_TTL_SECONDS": str(config.upload_url_ttl_seconds),
             "SPIP_ALLOWED_ORIGINS": ",".join(config.allowed_origins),
             "SPIP_JWT_ISSUER": config.jwt_issuer, "SPIP_JWT_AUDIENCE": ",".join(config.jwt_audience),
+            "SPIP_AUTH_ENABLED": "true", "SPIP_AUTH_ISSUER": config.jwt_issuer,
+            "SPIP_AUTH_CLIENT_ID": config.jwt_audience[0], "SPIP_AUTH_SCOPE": config.authorization_scopes[0],
+            "SPIP_API_PREFIX": "", "SPIP_JOB_LEASE_SECONDS": str(config.job_lease_seconds),
             "PGSSLROOTCERT": "/opt/spip-cloud/rds-ca.pem",
         }
         secrets = {
@@ -73,6 +76,8 @@ class BackendRuntimeStack(Stack):
             if name == "api":
                 container.add_port_mappings(ecs.PortMapping(container_port=8000))
         public_bucket.grant_read(self.api_task.task_role)
+        key.grant_decrypt(self.api_task.execution_role)
+        key.grant_decrypt(self.worker_task.execution_role)
         public_bucket.grant_read(self.worker_task.task_role)
         tenant_bucket.grant_read(self.api_task.task_role, "tenants/*/uploads/*")
         tenant_bucket.grant_put(self.api_task.task_role, "tenants/*/uploads/*")
@@ -120,9 +125,11 @@ class BackendRuntimeStack(Stack):
                 allow_methods=[gateway.CorsHttpMethod.GET, gateway.CorsHttpMethod.POST, gateway.CorsHttpMethod.OPTIONS],
             ),
         )
-        for method, path in [(gateway.HttpMethod.POST, "/uploads"), (gateway.HttpMethod.POST, "/jobs"),
+        self.api.add_routes(path="/health", methods=[gateway.HttpMethod.GET], integration=integration)
+        for method, path in [(gateway.HttpMethod.GET, "/entities"),
+                             (gateway.HttpMethod.POST, "/uploads"), (gateway.HttpMethod.POST, "/jobs"),
                              (gateway.HttpMethod.GET, "/jobs/{job_id}"),
-                             (gateway.HttpMethod.GET, "/analysis/{entity_id}"), (gateway.HttpMethod.GET, "/health")]:
+                             (gateway.HttpMethod.GET, "/analysis/{entity_id}")]:
             self.api.add_routes(path=path, methods=[method], integration=integration,
                                 authorizer=authorizer, authorization_scopes=list(config.authorization_scopes))
         CfnOutput(self, "ApiEndpoint", value=self.api.api_endpoint)

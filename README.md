@@ -74,3 +74,7 @@ The [backend–cloud contract draft](docs/BACKEND_CLOUD_CONTRACT.md) reserves up
 ## 9. Login and authorization integration
 
 [Login module and auth contract](docs/AUTH_CONTRACT.md) documents the independently deployed Cognito stack, invite-only accounts, frontend login/logout and authenticated requests, public build settings, local demo mode and backend tenant-authorization responsibilities. The frontend includes the latest CSV demo; actual S3 upload remains to implement. Cognito login does not establish tenant membership or complete backend isolation.
+
+## 10. API integration
+
+[Current cloud API integration](docs/API_INTEGRATION.md) defines CloudFront `/api` prefix removal, Cognito-protected business routes, public health, pinned backend packaging and separate migration/import operations. Frontend JavaScript remains owned by the frontend branch; cloud-config pushes no longer publish its old frontend copy.

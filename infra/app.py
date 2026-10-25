@@ -4,12 +4,13 @@ from dataclasses import replace
 import os
 from pathlib import Path
 import aws_cdk as cdk
-from aws_cdk import aws_cloudfront as cloudfront, aws_cloudfront_origins as origins
+from infra.api_edge import attach_api
 from infra.infra_stack import InfraStack
 from infra.backend_config import BackendConfig
 from infra.backend_data_stack import BackendDataStack
 from infra.backend_runtime_stack import BackendRuntimeStack
 from infra.auth_stack import AuthStack
+from infra.backend_operations_stack import BackendOperationsStack
 
 
 def enabled(value):
@@ -35,24 +36,14 @@ if enabled(app.node.try_get_context("enable_backend")):
         raise ValueError("Provide -c backend_config=<reviewed JSON file>")
     config = BackendConfig.from_dict(json.loads(Path(path).read_text()))
     data = BackendDataStack(app, "BackendDataStack", config=config, env=env, termination_protection=True)
+    if enabled(app.node.try_get_context("enable_backend_operations")):
+        BackendOperationsStack(app, "BackendOperationsStack", data=data, config=config, env=env)
     if enabled(app.node.try_get_context("enable_backend_runtime")):
         if identity:
             config = replace(config, jwt_issuer=identity.issuer,
                 jwt_audience=(identity.client.user_pool_client_id,), authorization_scopes=("spip/access",))
         runtime = BackendRuntimeStack(app, "BackendRuntimeStack", data=data, config=config, env=env)
-        # The API Gateway has unprefixed routes. Rewrite /api/jobs to /jobs.
-        rewrite = cloudfront.Function(frontend, "ApiPrefixRouting", code=cloudfront.FunctionCode.from_inline(
-            "function handler(event) { var r = event.request; r.uri = r.uri.substring(4); return r; }"
-        ))
-        frontend.distribution.add_behavior(
-            "api/*", origins.HttpOrigin(cdk.Fn.select(2, cdk.Fn.split("/", runtime.api.api_endpoint))),
-            allowed_methods=cloudfront.AllowedMethods.ALLOW_ALL,
-            viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-            cache_policy=cloudfront.CachePolicy.CACHING_DISABLED,
-            origin_request_policy=cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
-            function_associations=[cloudfront.FunctionAssociation(
-                function=rewrite, event_type=cloudfront.FunctionEventType.VIEWER_REQUEST)],
-        )
+        attach_api(frontend, runtime.api.api_endpoint)
 else:
     if enabled(app.node.try_get_context("enable_backend_runtime")):
         raise ValueError("enable_backend_runtime requires enable_backend=true")

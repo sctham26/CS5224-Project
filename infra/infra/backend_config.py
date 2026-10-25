@@ -9,6 +9,7 @@ class BackendConfig:
     postgres_version: str = "18.6"  # Available in ap-southeast-1 on 2026-10-23.
     multi_az: bool = True
     visibility_seconds: int = 900
+    job_lease_seconds: int = 840
     max_receive_count: int = 5
     upload_url_ttl_seconds: int = 300
     api_image: str | None = None
@@ -33,6 +34,8 @@ class BackendConfig:
         ]:
             if type(value) is not int or not low <= value <= high:
                 raise ValueError(f"Invalid {name}")
+        if type(self.job_lease_seconds) is not int or not 1 <= self.job_lease_seconds <= self.visibility_seconds - 30:
+            raise ValueError("job_lease_seconds must leave at least 30 seconds before queue visibility expires")
         for origin in self.allowed_origins:
             parsed = urlsplit(origin)
             if parsed.scheme != "https" or not parsed.netloc or parsed.path not in ("", "/") or parsed.query or parsed.fragment or parsed.username:

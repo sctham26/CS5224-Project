@@ -39,7 +39,7 @@ jobs:
       - run: npm ci
         working-directory: infra
       - name: Synthesize full backend with test-only images (no deployment)
-        run: npx cdk synth --strict --quiet --no-lookups -c enable_auth=true -c enable_backend=true -c enable_backend_runtime=true -c backend_config=tests/fixtures/backend-runtime.json
+        run: npx cdk synth --strict --quiet --no-lookups -c enable_auth=true -c enable_backend=true -c enable_backend_operations=true -c enable_backend_runtime=true -c backend_config=tests/fixtures/backend-runtime.json
         working-directory: infra
         env:
           CDK_DEFAULT_ACCOUNT: '825990809862'
@@ -48,5 +48,13 @@ jobs:
           AWS_DEFAULT_REGION: ap-southeast-1
       - name: Verify bootstrap image builds
         run: docker build -t spip-database-bootstrap:ci backend_cloud
+      - name: Fetch pinned backend migrations without modifying application branches
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 27cc9fb7c6d0b0ae21057e5ba1a4bfb8b90cbe2e
+          path: backend-source
+          persist-credentials: false
       - name: Exercise database grants and tenant-context isolation using disposable PostgreSQL
         run: bash scripts/test_backend_postgres.sh
+        env:
+          SPIP_TEST_BACKEND_SOURCE: ${{ github.workspace }}/backend-source

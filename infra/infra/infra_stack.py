@@ -18,7 +18,8 @@ class InfraStack(Stack):
             versioned=True,
             removal_policy=RemovalPolicy.RETAIN,
         )
-        # Rewrite browser navigation only. Missing assets and /api/* keep errors.
+        # Rewrite browser navigation only; API paths use their separate behavior
+        # when runtime is enabled and must never fall back to the SPA HTML.
         routing = cloudfront.Function(
             self, "SpaRouting",
             code=cloudfront.FunctionCode.from_inline("""

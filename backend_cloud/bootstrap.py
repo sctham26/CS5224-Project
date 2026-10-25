@@ -73,7 +73,14 @@ def bootstrap():
                                .format(sql.Identifier(role), sql.Identifier(database)))
                     db.execute(sql.SQL("GRANT USAGE ON SCHEMA app TO {}").format(sql.Identifier(role)))
                 for role in readers:
-                    actions = sql.SQL("SELECT") if role == "spip_public_reader" else sql.SQL("SELECT, INSERT, UPDATE, DELETE")
+                    # Business-table grants are applied by the reviewed migration
+                    # task. Never grant a tenant app write access to future
+                    # administrative tables such as tenant_membership.
+                    if role == "spip_tenant_app":
+                        db.execute(sql.SQL("ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA app REVOKE ALL ON TABLES FROM {}")
+                                   .format(sql.Identifier(migrator), sql.Identifier(role)))
+                        continue
+                    actions = sql.SQL("SELECT") if role == "spip_public_reader" else sql.SQL("SELECT, INSERT, UPDATE")
                     db.execute(sql.SQL("GRANT {} ON ALL TABLES IN SCHEMA app TO {}")
                                .format(actions, sql.Identifier(role)))
                     db.execute(sql.SQL("ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA app GRANT {} ON TABLES TO {}")

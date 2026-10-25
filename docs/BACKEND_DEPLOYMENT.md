@@ -1,5 +1,7 @@
 # Backend cloud configuration
 
+**2026-10-25 update:** [API integration and operator handoff](API_INTEGRATION.md) describes the current pinned backend, deployment order, public health route, explicit Cognito settings, separate migration/import tasks and app-role grants. It supersedes older status statements and migration placeholders below.
+
 Implemented configuration on `cloud-config`; **not deployed**. This adds infrastructure and a database bootstrap utility, not application upload/job endpoints, ESG parsing, business tables, migrations, or an analytics worker. Interface agreement: [backend–cloud contract](BACKEND_CLOUD_CONTRACT.md).
 
 ## Modules and deployment boundaries

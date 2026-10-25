@@ -89,7 +89,7 @@ jobs:
     needs: [infrastructure-checks, frontend-build]
     if: >-
       github.event_name != 'pull_request' &&
-      (github.ref == 'refs/heads/cloud-config' || github.ref == 'refs/heads/main')
+      github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # Both trusted branches target one development site; serialize all releases.

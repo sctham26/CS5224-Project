@@ -5,7 +5,7 @@ from aws_cdk import (
     CfnOutput, Duration, RemovalPolicy, Stack, Tags,
     aws_cloudwatch as cw, aws_ec2 as ec2, aws_ecs as ecs,
     aws_ecr_assets as assets, aws_kms as kms, aws_logs as logs,
-    aws_rds as rds, aws_s3 as s3, aws_secretsmanager as sm, aws_sqs as sqs,
+    aws_rds as rds, aws_s3 as s3, aws_secretsmanager as sm, aws_sqs as sqs, aws_ecr as ecr,
 )
 from constructs import Construct
 from .backend_config import BackendConfig
@@ -15,6 +15,9 @@ class BackendDataStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, *, config: BackendConfig, **kwargs):
         super().__init__(scope, construct_id, **kwargs)
         self.config = config
+        self.backend_repository = ecr.Repository(self, "BackendImages", repository_name="spip-backend",
+            image_scan_on_push=True, image_tag_mutability=ecr.TagMutability.IMMUTABLE,
+            removal_policy=RemovalPolicy.RETAIN)
         self.key = kms.Key(self, "DataKey", enable_key_rotation=True, removal_policy=RemovalPolicy.RETAIN)
         # No NAT gateways: Fargate tasks later use public subnets for outbound
         # HTTPS only, with no internet ingress. RDS stays in isolated subnets.
@@ -135,6 +138,7 @@ class BackendDataStack(Stack):
         self.key.grant_decrypt(self.bootstrap_task.execution_role)
         for name, value in {
             "VpcId": self.vpc.vpc_id, "ClusterName": self.cluster.cluster_name,
+            "BackendRepositoryUri": self.backend_repository.repository_uri,
             "TaskSubnets": ",".join(s.subnet_id for s in self.vpc.public_subnets),
             "BootstrapSecurityGroupId": self.bootstrap_sg.security_group_id,
             "BootstrapTaskDefinitionArn": self.bootstrap_task.task_definition_arn,

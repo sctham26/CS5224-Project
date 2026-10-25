@@ -49,6 +49,7 @@ def test_public_reader_cannot_write_or_connect_to_tenant_database(credentials):
 def test_non_owner_app_role_can_enforce_backend_rls_and_reset_context(credentials):
     with credentials("tenant_migrator", "spip_tenant") as conn:
         conn.execute("CREATE TABLE app.tenant_probe (tenant_id text, value text)")
+        conn.execute("GRANT SELECT, INSERT, UPDATE ON app.tenant_probe TO spip_tenant_app")
         conn.execute("ALTER TABLE app.tenant_probe ENABLE ROW LEVEL SECURITY")
         conn.execute("CREATE POLICY tenant_only ON app.tenant_probe USING (tenant_id = current_setting('spip.tenant_id',true)) WITH CHECK (tenant_id = current_setting('spip.tenant_id',true))")
         conn.execute("INSERT INTO app.tenant_probe VALUES ('alpha','alpha private'), ('beta','beta private')")
@@ -60,3 +61,30 @@ def test_non_owner_app_role_can_enforce_backend_rls_and_reset_context(credential
         conn.execute("SELECT set_config('spip.tenant_id','alpha',true)")
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
             conn.execute("INSERT INTO app.tenant_probe VALUES ('beta','forbidden')")
+
+
+@pytest.mark.skipif(not os.environ.get("SPIP_TEST_BACKEND_SOURCE"), reason="Requires pinned backend migrations")
+def test_real_backend_migrations_and_membership_write_boundary(credentials):
+    from operations import apply_migrations
+    from psycopg.conninfo import make_conninfo
+    def url(role, database):
+        return make_conninfo(host="localhost", dbname=database, user="spip_" + role,
+            password="test_only_" + role, sslmode="verify-full", sslrootcert=os.environ["PGSSLROOTCERT"])
+    directory = Path(os.environ["SPIP_TEST_BACKEND_SOURCE"]) / "migrations"
+    args = (url("public_migrator", "spip_public"), url("tenant_migrator", "spip_tenant"), directory)
+    apply_migrations(*args)
+    apply_migrations(*args)
+    with credentials("tenant_migrator", "spip_tenant") as conn:
+        conn.execute("SELECT set_config('app.user_sub','test-subject',true)")
+        conn.execute("INSERT INTO app.tenant_membership VALUES ('test-subject','alpha',true)")
+        conn.execute("SELECT set_config('app.tenant_id','alpha',true)")
+        conn.execute("INSERT INTO app.observation(tenant_id,entity_id,reporting_scope,reporting_year,metric_code) "
+                     "VALUES ('alpha','building-1','asset',2024,'test')")
+    with credentials("tenant_app", "spip_tenant") as conn:
+        assert conn.execute("SELECT count(*) FROM app.observation").fetchone()[0] == 0
+        assert conn.execute("SELECT rolbypassrls FROM pg_roles WHERE rolname=current_user").fetchone() == (False,)
+        assert conn.execute("SELECT pg_get_userbyid(relowner) <> current_user FROM pg_class WHERE oid='app.observation'::regclass").fetchone() == (True,)
+        conn.execute("SELECT set_config('app.user_sub','test-subject',true)")
+        assert conn.execute("SELECT tenant_id FROM app.tenant_membership").fetchall() == [("alpha",)]
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            conn.execute("UPDATE app.tenant_membership SET tenant_id='beta'")

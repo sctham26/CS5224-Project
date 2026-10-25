@@ -73,25 +73,38 @@ def test_application_cannot_receive_admin_or_migration_credentials():
         assert names == {"SPIP_PUBLIC_DB_CREDENTIALS", "SPIP_TENANT_DB_CREDENTIALS"}
         assert "@sha256:" in json.dumps(container["Image"])
         assert container["EntryPoint"] == ["python", "/opt/spip-cloud/entrypoint.py"]
+        env = {item["Name"]: item["Value"] for item in container["Environment"]}
+        assert env["SPIP_AUTH_ENABLED"] == "true"
+        assert env["SPIP_API_PREFIX"] == ""
+        assert env["SPIP_AUTH_SCOPE"] == "spip/access"
+        assert env["SPIP_JOB_LEASE_SECONDS"] == "840"
     # Administrative credentials are confined to an explicitly launched task.
     bootstrap = items(data, "AWS::ECS::TaskDefinition")[0]["Properties"]["ContainerDefinitions"][0]
     assert "SPIP_ADMIN_CREDENTIALS" in {secret["Name"] for secret in bootstrap["Secrets"]}
     routes = items(runtime, "AWS::ApiGatewayV2::Route")
-    assert len(routes) == 5
-    assert all(r["Properties"]["AuthorizationType"] == "JWT" for r in routes)
-    assert all(r["Properties"]["AuthorizationScopes"] == ["spip/access"] for r in routes)
-    assert not any("/analyze" == r["Properties"]["RouteKey"].split()[-1] for r in routes)
+    assert len(routes) == 6
+    protected = [r for r in routes if r["Properties"]["RouteKey"] != "GET /health"]
+    assert len(protected) == 5
+    assert next(r for r in routes if r["Properties"]["RouteKey"] == "GET /health")["Properties"]["AuthorizationType"] == "NONE"
+    assert all(r["Properties"]["AuthorizationType"] == "JWT" for r in protected)
+    assert all(r["Properties"]["AuthorizationScopes"] == ["spip/access"] for r in protected)
+    assert not any("/analyze" == r["Properties"]["RouteKey"].split()[-1] for r in protected)
     assert not items(runtime, "AWS::ElasticLoadBalancingV2::LoadBalancer")[0]["Properties"]["Scheme"] == "internet-facing"
     for policy in items(runtime, "AWS::IAM::Policy"):
         content = json.dumps(policy)
         assert "Credentials-public_migrator" not in content
         assert "Credentials-tenant_migrator" not in content
+    execution_policies = [r for name, r in runtime.find_resources("AWS::IAM::Policy").items() if "ExecutionRole" in name]
+    assert len(execution_policies) == 2
+    for policy in execution_policies:
+        assert "kms:Decrypt" in json.dumps(policy["Properties"]["PolicyDocument"])
     # IAM policies may send/consume the work queue, but no ordinary DLQ consumer.
     assert "s3:DeleteObject" not in json.dumps(items(runtime, "AWS::IAM::Policy"))
 
 
 @pytest.mark.parametrize("kwargs", [
     {"multi_az": "false"}, {"visibility_seconds": 0}, {"max_receive_count": True},
+    {"job_lease_seconds": 900},
     {"allowed_origins": ("*",)}, {"allowed_origins": ("http://example.com",)},
 ])
 def test_invalid_configuration_is_rejected(kwargs):
