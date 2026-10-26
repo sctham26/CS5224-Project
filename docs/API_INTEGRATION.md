@@ -2,6 +2,8 @@
 
 Prepared 2026-10-25. Only cloud configuration, packaging and operator scripts are changed here. Application source is exported unchanged from backend commit `e8a9f65d377bf6d5b1ac59f5c58afbfdc63d6971`. Frontend branch `a463bfb` is owned by the frontend team; the old frontend copy in this branch is not the source for this integration.
 
+**Automatic release update (2026-10-26):** [Backend GitHub releases](BACKEND_RELEASE.md) supersedes manual image pinning below for routine application releases. The backend branch now has an explicitly authorized workflow entrypoint; reusable deployment code stays in the cloud branch. Live CloudFormation image parameters and Actions artifacts identify the current application release; the commit/digests below are dated operator-run snapshots. Infrastructure-only CDK updates retain previous image parameters; manual image changes must explicitly set both digest parameters.
+
 ## Public and backend paths
 
 | Browser URL at the existing CloudFront site | Gateway / FastAPI path | Authentication |

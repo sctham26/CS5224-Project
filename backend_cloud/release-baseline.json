@@ -1,0 +1,11 @@
+{
+  "backend_commit": "e8a9f65d377bf6d5b1ac59f5c58afbfdc63d6971",
+  "files": {
+    "migrations/001_public.sql": "ac17eaca41b28388f3c69514dc5b742474fa13ae603874be3a9e9ca6055757c4",
+    "migrations/002_tenant.sql": "c3202a89f0f9da13ccc260e7e89217be1dbd79bb324f7b087e04c0158de5eecc",
+    "migrations/003_jobs.sql": "563b20944a59ff20cf347ab9df2d8152346b10aa5cabd36d69ff83c28daa8ea6",
+    "migrations/004_observation_upsert_key.sql": "50cea7bb729032a88b499c62e2acaa1bfe53d09c4ef41983c46b23804dc162d2",
+    "requirements.txt": "071c3bdefcbe1bc8c3400905be59f55809dacedc593692e4a72116727305fd7d",
+    "pyproject.toml": "87db776b363e7ef0e88d6e8bf43f568d6fe4c886f84f1db3e00b619735bebf4b"
+  }
+}

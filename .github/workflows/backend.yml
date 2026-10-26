@@ -2,10 +2,10 @@ name: Backend cloud configuration checks
 on:
   push:
     branches: [cloud-config, main]
-    paths: ['infra/**', 'backend_cloud/**', 'scripts/test_backend_postgres.sh', '.github/workflows/backend.yml', 'docs/BACKEND_CLOUD_CONTRACT.md', 'docs/BACKEND_DEPLOYMENT.md']
+    paths: ['infra/**', 'backend_cloud/**', 'scripts/test_backend_postgres.sh', 'scripts/*backend*.py', '.github/workflows/backend*.yml', 'docs/BACKEND_CLOUD_CONTRACT.md', 'docs/BACKEND_DEPLOYMENT.md']
   pull_request:
     branches: [cloud-config, main]
-    paths: ['infra/**', 'backend_cloud/**', 'scripts/test_backend_postgres.sh', '.github/workflows/backend.yml', 'docs/BACKEND_CLOUD_CONTRACT.md', 'docs/BACKEND_DEPLOYMENT.md']
+    paths: ['infra/**', 'backend_cloud/**', 'scripts/test_backend_postgres.sh', 'scripts/*backend*.py', '.github/workflows/backend*.yml', 'docs/BACKEND_CLOUD_CONTRACT.md', 'docs/BACKEND_DEPLOYMENT.md']
   workflow_dispatch:
 permissions:
   contents: read
@@ -39,7 +39,7 @@ jobs:
       - run: npm ci
         working-directory: infra
       - name: Synthesize full backend with test-only images (no deployment)
-        run: npx cdk synth --strict --quiet --no-lookups -c enable_auth=true -c enable_backend=true -c enable_backend_operations=true -c enable_backend_runtime=true -c backend_config=tests/fixtures/backend-runtime.json
+        run: npx cdk synth --strict --quiet --no-lookups -c enable_auth=true -c enable_backend=true -c enable_backend_operations=true -c enable_backend_runtime=true -c enable_backend_release=true -c backend_config=tests/fixtures/backend-runtime.json
         working-directory: infra
         env:
           CDK_DEFAULT_ACCOUNT: '825990809862'

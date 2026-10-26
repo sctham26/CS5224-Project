@@ -71,7 +71,9 @@ def test_application_cannot_receive_admin_or_migration_credentials():
         container = task["Properties"]["ContainerDefinitions"][0]
         names = {secret["Name"] for secret in container["Secrets"]}
         assert names == {"SPIP_PUBLIC_DB_CREDENTIALS", "SPIP_TENANT_DB_CREDENTIALS"}
-        assert "@sha256:" in json.dumps(container["Image"])
+        parameter = container["Name"].title() + "ImageDigest"
+        assert parameter in json.dumps(container["Image"])
+        assert runtime.to_json()["Parameters"][parameter]["AllowedPattern"] == r"sha256:[a-f0-9]{64}"
         assert container["EntryPoint"] == ["python", "/opt/spip-cloud/entrypoint.py"]
         env = {item["Name"]: item["Value"] for item in container["Environment"]}
         assert env["SPIP_AUTH_ENABLED"] == "true"

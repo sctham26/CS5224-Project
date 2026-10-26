@@ -1,6 +1,6 @@
 """Optional real-image API/worker runtime; JWT-protected routes only."""
 from aws_cdk import (
-    CfnOutput, Duration, RemovalPolicy, Stack,
+    CfnOutput, CfnParameter, Duration, RemovalPolicy, Stack,
     aws_apigatewayv2 as gateway, aws_apigatewayv2_authorizers as auth,
     aws_apigatewayv2_integrations as integrations, aws_ec2 as ec2,
     aws_ecs as ecs, aws_elasticloadbalancingv2 as elb, aws_logs as logs,
@@ -16,6 +16,12 @@ class BackendRuntimeStack(Stack):
                  config: BackendConfig, **kwargs):
         config.validate_runtime()
         super().__init__(scope, construct_id, **kwargs)
+        image_digests = {
+            name: CfnParameter(self, name.title() + "ImageDigest", type="String",
+                default=image.split("@")[1], allowed_pattern=r"sha256:[a-f0-9]{64}",
+                description="Immutable application image; retain the previous value on infrastructure updates.")
+            for name, image in [("api", config.api_image), ("worker", config.worker_image)]
+        }
         api_sg = ec2.SecurityGroup.from_security_group_id(
             self, "ApiIngressTarget", data.api_sg.security_group_id
         )
@@ -68,11 +74,13 @@ class BackendRuntimeStack(Stack):
                 self, f"{name}ImageRepository", repository_name=repository,
                 repository_arn=f"arn:{self.partition}:ecr:{region}:{account}:repository/{repository}")
             container = task.add_container(
-                name, image=ecs.ContainerImage.from_ecr_repository(image_repository, tag=digest),
+                name, image=ecs.ContainerImage.from_registry(
+                    image_repository.repository_uri + "@" + image_digests[name].value_as_string),
                 entry_point=["python", "/opt/spip-cloud/entrypoint.py"], command=command,
                 environment=environment, secrets=secrets,
                 logging=ecs.LogDrivers.aws_logs(stream_prefix=name, log_group=group),
             )
+            image_repository.grant_pull(task.execution_role)
             if name == "api":
                 container.add_port_mappings(ecs.PortMapping(container_port=8000))
         public_bucket.grant_read(self.api_task.task_role)
@@ -87,14 +95,14 @@ class BackendRuntimeStack(Stack):
         queue.grant_send_messages(self.api_task.task_role)
         queue.grant_consume_messages(self.worker_task.task_role)
 
-        api_service = ecs.FargateService(
+        self.api_service = api_service = ecs.FargateService(
             self, "ApiService", cluster=data.cluster, task_definition=self.api_task,
             desired_count=1, min_healthy_percent=100, max_healthy_percent=200, assign_public_ip=True, security_groups=[api_sg],
             vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
             circuit_breaker=ecs.DeploymentCircuitBreaker(rollback=True),
             health_check_grace_period=Duration.seconds(60),
         )
-        ecs.FargateService(
+        self.worker_service = ecs.FargateService(
             self, "WorkerService", cluster=data.cluster, task_definition=self.worker_task,
             desired_count=1, min_healthy_percent=100, max_healthy_percent=200, assign_public_ip=True, security_groups=[data.worker_sg],
             vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
@@ -135,3 +143,6 @@ class BackendRuntimeStack(Stack):
         CfnOutput(self, "ApiEndpoint", value=self.api.api_endpoint)
         CfnOutput(self, "ApiTaskDefinitionArn", value=self.api_task.task_definition_arn)
         CfnOutput(self, "WorkerTaskDefinitionArn", value=self.worker_task.task_definition_arn)
+        CfnOutput(self, "ApiServiceArn", value=self.api_service.service_arn)
+        CfnOutput(self, "WorkerServiceArn", value=self.worker_service.service_arn)
+        CfnOutput(self, "ClusterName", value=data.cluster.cluster_name)

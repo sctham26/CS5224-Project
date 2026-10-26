@@ -12,6 +12,8 @@ Prepared 2026-10-23 for the SPIP team. Source branch: `cloud-config`; PR target:
 
 ## 1. What is delivered
 
+**Automatic backend releases (2026-10-26):** the backend branch's authorized workflow entrypoint now calls a SHA-pinned cloud workflow. It tests, publishes and updates only API/worker images through CloudFormation parameters. See [team instructions, permissions and rollback](BACKEND_RELEASE.md). This supersedes the dated statements below that backend publishing is always operator-run; database migrations and privileged operator tasks remain cloud-owned.
+
 | Component | Implemented | Verification / deployment |
 | --- | --- | --- |
 | Frontend hosting | Python CDK: private versioned S3, CloudFront OAC/HTTPS/SPA routing | Deployed in account `825990809862`, `ap-southeast-1`; website below |

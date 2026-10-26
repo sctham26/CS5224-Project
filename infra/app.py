@@ -11,6 +11,7 @@ from infra.backend_data_stack import BackendDataStack
 from infra.backend_runtime_stack import BackendRuntimeStack
 from infra.auth_stack import AuthStack
 from infra.backend_operations_stack import BackendOperationsStack
+from infra.backend_release_stack import BackendReleaseStack
 
 
 def enabled(value):
@@ -44,6 +45,8 @@ if enabled(app.node.try_get_context("enable_backend")):
                 jwt_audience=(identity.client.user_pool_client_id,), authorization_scopes=("spip/access",))
         runtime = BackendRuntimeStack(app, "BackendRuntimeStack", data=data, config=config, env=env)
         attach_api(frontend, runtime.api.api_endpoint)
+        if enabled(app.node.try_get_context("enable_backend_release")):
+            BackendReleaseStack(app, "BackendReleaseStack", data=data, runtime=runtime, env=env)
 else:
     if enabled(app.node.try_get_context("enable_backend_runtime")):
         raise ValueError("enable_backend_runtime requires enable_backend=true")
