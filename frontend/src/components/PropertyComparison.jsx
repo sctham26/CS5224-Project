@@ -1,5 +1,7 @@
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import EntitySelector from './EntitySelector'
+import { getEntityDisplayName, getReportingYears } from './entityUtils'
 import {
   BarChart,
   Bar,
@@ -10,18 +12,7 @@ import {
   ResponsiveContainer
 } from 'recharts'
 
-// Local analytics API used during development
 const API_BASE_URL = 'http://localhost:8000'
-
-// Temporary property list until a property-list API is available
-const PROPERTY_IDS = [
-  'A001',
-  'A002',
-  'A003',
-  'A004',
-  'A005',
-  'A006'
-]
 
 const METRICS = [
   {
@@ -71,35 +62,87 @@ function formatNumber(value) {
   })
 }
 
-function PropertyComparison() {
-  const [property1, setProperty1] = useState('A001')
-  const [property2, setProperty2] = useState('A002')
-  const [reportingYear, setReportingYear] = useState('2024')
+function PropertyComparison({ entities, entitiesLoading, entitiesError }) {
+  const [selectedProperty1, setSelectedProperty1] = useState('')
+  const [selectedProperty2, setSelectedProperty2] = useState('')
+  const [selectedReportingYear, setSelectedReportingYear] = useState('')
   const [selectedMetric, setSelectedMetric] = useState(
     'ENERGY_INTENSITY_EUI'
   )
+  const [comparisonResult, setComparisonResult] = useState(null)
 
-  const [comparisonData, setComparisonData] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
+  const property1 = entities.some(
+    (entity) => entity.entity_id === selectedProperty1
+  ) ? selectedProperty1 : entities[0]?.entity_id ?? ''
+  const property2 = entities.some(
+    (entity) => entity.entity_id === selectedProperty2
+  ) ? selectedProperty2 : entities.find(
+    (entity) => entity.entity_id !== property1
+  )?.entity_id ?? property1
+
+  const firstEntity = entities.find(
+    (entity) => entity.entity_id === property1
+  )
+  const secondEntity = entities.find(
+    (entity) => entity.entity_id === property2
+  )
+  const firstYears = useMemo(
+    () => getReportingYears(firstEntity),
+    [firstEntity]
+  )
+  const secondYears = useMemo(
+    () => getReportingYears(secondEntity),
+    [secondEntity]
+  )
+  const sharedYears = useMemo(
+    () => firstYears.filter((year) => secondYears.includes(year)),
+    [firstYears, secondYears]
+  )
+
+  const reportingYear = sharedYears.includes(selectedReportingYear)
+    ? selectedReportingYear
+    : sharedYears[0] ?? ''
+  const comparisonRequestKey = JSON.stringify([
+    property1,
+    property2,
+    reportingYear
+  ])
+  const hasComparisonSelection =
+    !entitiesLoading &&
+    !entitiesError &&
+    Boolean(firstEntity) &&
+    Boolean(secondEntity) &&
+    property1 !== property2 &&
+    sharedYears.includes(reportingYear)
+  const currentComparisonResult =
+    comparisonResult?.key === comparisonRequestKey
+      ? comparisonResult
+      : null
+  const comparisonData = currentComparisonResult?.data
+  const error = currentComparisonResult?.error
+  const loading = Boolean(hasComparisonSelection && !currentComparisonResult)
 
   useEffect(() => {
-    if (property1 === property2) {
+    if (
+      entitiesLoading ||
+      entitiesError ||
+      !firstEntity ||
+      !secondEntity ||
+      property1 === property2 ||
+      !sharedYears.includes(reportingYear)
+    ) {
       return
     }
 
     const controller = new AbortController()
+    const requestKey = JSON.stringify([property1, property2, reportingYear])
 
     async function loadComparison() {
-      setLoading(true)
-      setError(null)
-      setComparisonData(null)
-
       try {
         const fetchProperty = async (entityId) => {
           const response = await fetch(
             `${API_BASE_URL}/analysis/${encodeURIComponent(entityId)}` +
-              `?scope=asset&reporting_year=${reportingYear}`,
+              `?scope=asset&reporting_year=${encodeURIComponent(reportingYear)}`,
             { signal: controller.signal }
           )
 
@@ -118,15 +161,19 @@ function PropertyComparison() {
         ])
 
         if (!controller.signal.aborted) {
-          setComparisonData([first, second])
+          setComparisonResult({
+            key: requestKey,
+            data: [first, second],
+            error: null
+          })
         }
       } catch (err) {
         if (!controller.signal.aborted) {
-          setError(err.message)
-        }
-      } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false)
+          setComparisonResult({
+            key: requestKey,
+            data: null,
+            error: err.message
+          })
         }
       }
     }
@@ -134,7 +181,16 @@ function PropertyComparison() {
     loadComparison()
 
     return () => controller.abort()
-  }, [property1, property2, reportingYear])
+  }, [
+    entitiesError,
+    entitiesLoading,
+    firstEntity,
+    property1,
+    property2,
+    reportingYear,
+    secondEntity,
+    sharedYears
+  ])
 
   const sameProperty = property1 === property2
 
@@ -162,11 +218,11 @@ function PropertyComparison() {
   const chartData = comparable
     ? [
         {
-          name: first.entity_name || first.entity_id,
+          name: getEntityDisplayName(first),
           value: firstValue
         },
         {
-          name: second.entity_name || second.entity_id,
+          name: getEntityDisplayName(second),
           value: secondValue
         }
       ]
@@ -183,29 +239,27 @@ function PropertyComparison() {
 
       <div className="comparison-selectors">
         <div>
-          <label htmlFor="compareProperty1">Property 1</label>
-          <select
+          <EntitySelector
             id="compareProperty1"
+            label="Property 1"
+            entities={entities}
             value={property1}
-            onChange={(e) => setProperty1(e.target.value)}
-          >
-            {PROPERTY_IDS.map((id) => (
-              <option key={id} value={id}>{id}</option>
-            ))}
-          </select>
+            onChange={setSelectedProperty1}
+            disabled={entitiesLoading || Boolean(entitiesError)}
+            loading={entitiesLoading}
+          />
         </div>
 
         <div>
-          <label htmlFor="compareProperty2">Property 2</label>
-          <select
+          <EntitySelector
             id="compareProperty2"
+            label="Property 2"
+            entities={entities}
             value={property2}
-            onChange={(e) => setProperty2(e.target.value)}
-          >
-            {PROPERTY_IDS.map((id) => (
-              <option key={id} value={id}>{id}</option>
-            ))}
-          </select>
+            onChange={setSelectedProperty2}
+            disabled={entitiesLoading || Boolean(entitiesError)}
+            loading={entitiesLoading}
+          />
         </div>
 
         <div>
@@ -213,9 +267,15 @@ function PropertyComparison() {
           <select
             id="compareYear"
             value={reportingYear}
-            onChange={(e) => setReportingYear(e.target.value)}
+            onChange={(e) => setSelectedReportingYear(e.target.value)}
+            disabled={sharedYears.length === 0}
           >
-            <option value="2024">2024</option>
+            {sharedYears.length === 0 && (
+              <option value="">No shared reporting years</option>
+            )}
+            {sharedYears.map((year) => (
+              <option key={year} value={year}>{year}</option>
+            ))}
           </select>
         </div>
 
@@ -235,11 +295,49 @@ function PropertyComparison() {
         </div>
       </div>
 
-      {sameProperty && (
+      {entitiesLoading && (
+        <div className="info-box" role="status">
+          Loading available properties...
+        </div>
+      )}
+
+      {entitiesError && (
+        <div className="info-box">
+          <p className="api-error">
+            Unable to retrieve properties: {entitiesError}
+          </p>
+          <p>Check that the Analytics API is running on port 8000.</p>
+        </div>
+      )}
+
+      {!entitiesLoading && !entitiesError && entities.length === 0 && (
+        <div className="info-box">
+          The Analytics API did not return any properties.
+        </div>
+      )}
+
+      {!entitiesLoading &&
+        !entitiesError &&
+        entities.length === 1 && (
+          <div className="info-box">
+            At least two properties are required for comparison.
+          </div>
+        )}
+
+      {sameProperty && entities.length > 1 && (
         <div className="info-box">
           Please select two different properties.
         </div>
       )}
+
+      {!sameProperty &&
+        property1 &&
+        property2 &&
+        sharedYears.length === 0 && (
+          <div className="info-box">
+            These properties have no shared reporting years.
+          </div>
+        )}
 
       {!sameProperty && loading && (
         <div className="info-box" role="status">
@@ -262,7 +360,7 @@ function PropertyComparison() {
             <h3>ESG Metrics Comparison</h3>
 
             <p className="comparison-note">
-              {first.entity_id} and {second.entity_id}
+              {getEntityDisplayName(first)} and {getEntityDisplayName(second)}
               {' '}— Reporting Year: {reportingYear}
             </p>
 
@@ -271,8 +369,8 @@ function PropertyComparison() {
                 <thead>
                   <tr>
                     <th>ESG Metric</th>
-                    <th>{first.entity_name || first.entity_id}</th>
-                    <th>{second.entity_name || second.entity_id}</th>
+                    <th>{getEntityDisplayName(first)}</th>
+                    <th>{getEntityDisplayName(second)}</th>
                   </tr>
                 </thead>
 
@@ -367,8 +465,8 @@ function PropertyComparison() {
                         ? firstValue < secondValue
                         : firstValue > secondValue
                     )
-                      ? `${first.entity_name} has the better value for this metric.`
-                      : `${second.entity_name} has the better value for this metric.`}
+                      ? `${getEntityDisplayName(first)} has the better value for this metric.`
+                      : `${getEntityDisplayName(second)} has the better value for this metric.`}
                 </p>
               </>
             ) : (
