@@ -8,6 +8,6 @@ permissions:
   id-token: write
 jobs:
   deploy:
-    uses: sctham26/CS5224-Project/.github/workflows/backend-release.yml@42eb2f1e36ff2e7c983998d6b35a923a14d7c033
+    uses: sctham26/CS5224-Project/.github/workflows/backend-release.yml@4210aa62cf711f4cd8482a7158c92abaa8a68387
     with:
-      cloud_ref: 42eb2f1e36ff2e7c983998d6b35a923a14d7c033
+      cloud_ref: 4210aa62cf711f4cd8482a7158c92abaa8a68387
