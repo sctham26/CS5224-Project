@@ -12,12 +12,14 @@ def test_health():
 
 
 def test_get_analysis_default_dataset():
-    r = client.get("/analysis/A001", headers={"Origin": "http://localhost:5173"})
+    # API default is the team's public baseline (building-level, team CSV format).
+    r = client.get("/analysis/SG_228218_LATEST_6", headers={"Origin": "http://localhost:5173"})
     assert r.status_code == 200
     body = r.json()
     assert {"entity_id", "entity_name", "tenant_id", "reporting_year", "peer_cohort", "metrics"} <= set(body)
-    assert body["entity_id"] == "A001"
+    assert body["entity_id"] == "SG_228218_LATEST_6"
     assert isinstance(body["reporting_year"], int)
+    assert body["peer_cohort"]["property_type"] == "OFFICE"
     # CORS for the Vite dev server
     assert r.headers.get("access-control-allow-origin")
 
@@ -27,7 +29,9 @@ def test_get_analysis_entity_not_found():
 
 
 def test_get_analysis_rejects_bad_scope():
-    assert client.get("/analysis/A001", params={"scope": "planet"}).status_code == 422
+    assert (
+        client.get("/analysis/SG_228218_LATEST_6", params={"scope": "planet"}).status_code == 422
+    )
 
 
 def test_post_upload_their_format():
@@ -62,3 +66,22 @@ def test_post_upload_entity_not_found():
             files={"file": ("their.csv", fh, "text/csv")},
         )
     assert r.status_code == 404
+
+
+def test_entities_lists_reporting_years_from_the_data():
+    """Discovery endpoint: years are whatever exists, so gaps are never offered."""
+    body = client.get("/entities").json()
+    assert body["count"] > 0
+    entry = next(
+        e for e in body["entities"] if e["entity_id"] == "SG_228218_LATEST_6"
+    )
+    # Baseline has 2017-2020 and 2022-2025; 2021 must not appear.
+    assert 2021 not in entry["reporting_years"]
+    assert entry["latest_reporting_year"] == entry["reporting_years"][0] == 2025
+    assert entry["scope"] == "asset" and entry["property_type"] == "OFFICE"
+
+
+def test_entities_can_be_filtered_by_scope():
+    body = client.get("/entities", params={"scope": "asset"}).json()
+    assert {e["scope"] for e in body["entities"]} == {"asset"}
+    assert client.get("/entities", params={"scope": "planet"}).status_code == 422

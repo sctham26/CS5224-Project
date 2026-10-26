@@ -16,14 +16,27 @@ All paths are relative to `spip-analytics/`.
 python -m uvicorn api:app --app-dir src --port 8000
 ```
 
+All protected routes require `Authorization: Bearer <Cognito access token>`; the
+verified `sub` resolves to one active tenant, and every read returns only the public
+baseline plus that tenant's own rows.
+
 | Method & path | Params | Purpose |
 |---|---|---|
-| `GET /health` | — | Liveness probe |
-| `GET /analysis/{entity_id}` | `scope=asset\|portfolio`, `reporting_year` | Serve `data/synthetic_esg.csv` (or `SPIP_DATA`) in the team's output contract |
-| `POST /analyze` | multipart `file`, `entity_id`, `reporting_year`, `scope` | Analyse an uploaded CSV (team or engine format) in the same contract |
+| `GET /health` | — | Liveness probe; unprotected (ALB) |
+| `GET /entities` | optional `scope=asset\|portfolio` | Discovery: entities visible to this tenant with the reporting years present in the data |
+| `GET /analysis/{entity_id}` | `scope=asset\|portfolio`, `reporting_year` | Serve `data/cleaned/public_esg_baseline.csv` (or `SPIP_DATA`), or PostgreSQL when `SPIP_PUBLIC_DATABASE_URL` is set |
+| `POST /uploads` | — | Presigned `PUT` for `tenants/<tenant>/uploads/<uuid>.csv`; `201` with `upload_url`, `method`, `key`, `expires_in` |
+| `POST /jobs` | `Idempotency-Key` header + `{upload_key, entity_id, reporting_year?, scope?}` | `202` with `job_id`, `status`, `status_url`; identical retry replays the same job (`Idempotent-Replay: true`) |
+| `GET /jobs/{job_id}` | — | Ownership-checked state, `result` when `SUCCEEDED`, `error` when `FAILED` |
+| `POST /analyze` | multipart `file`, `entity_id`, `reporting_year`, `scope` | Local synchronous upload (unique temp file); not a production upload path |
 
-Errors: `404` entity not found, `422` bad scope / unknown `metric_code` / missing
-`entity_id`. CORS is open (`*`) for the Vite dev server. Response body always matches
+Errors: `401` missing/invalid/expired token, `403` valid account without tenant
+membership, `404` entity / upload key / job not visible to this tenant, `409`
+idempotency key reused with a different request, `422` bad scope / unknown `metric_code` /
+missing `entity_id` / invalid job envelope, `503` upload pipeline not configured. CORS is
+restricted to `SPIP_ALLOWED_ORIGINS` and allows `Authorization`, `Content-Type` and
+`Idempotency-Key`. `/health` is never prefixed; set `SPIP_API_PREFIX=/api` only if the
+gateway keeps the browser-facing segment instead of stripping it. Response body always matches
 `schemas/analytics_output_contract.json` (PR #1): `entity_id`, `entity_name`,
 `tenant_id`, `reporting_year` (int), `peer_cohort{property_type, region, sample_size_n,
 fallback_applied, fallback_reason}`, `metrics[]` with `comparability_status` ∈
@@ -63,7 +76,7 @@ result: dict = run_gap_analysis(
     metrics_path="config/metrics.yaml",        # required: metric dictionary
     peer_rules_path="config/peer_rules.yaml",  # required: peer fallback rules
     entity_id="A001",                          # required: target entity
-    reporting_period="2024",                   # optional: defaults to first record
+    reporting_period="2024",                   # optional; defaults to the latest period
     scope=ReportingScope.ASSET,                # optional: asset (default) | portfolio
 )
 ```
@@ -74,7 +87,7 @@ result: dict = run_gap_analysis(
 | `metrics_path` | `str \| Path` | yes | YAML, see §2.2 |
 | `peer_rules_path` | `str \| Path` | yes | YAML, see §2.3 |
 | `entity_id` | `str` | yes | Target entity ID |
-| `reporting_period` | `str \| None` | no | Required when an entity has multiple periods |
+| `reporting_period` | `str \| None` | no | Omitted = entity's latest period analysed |
 | `scope` | `ReportingScope` | no | `ASSET` (default) or `PORTFOLIO` |
 
 Raises `ValueError` if the entity is absent from that scope.
@@ -219,7 +232,6 @@ metric availability, and unit convertible to canonical. Otherwise it is excluded
   the Vite dashboard (`GET /analysis/{entity_id}`).
 - Library layer: `analyse_to_contract` (team contract) or `run_gap_analysis` (engine
   contract, richer provenance).
-- Integration artefacts: team-shaped response from the API; engine example in
-  `examples/output.json`.
-- Not integrated: the team's real datasets (`public_esg_baseline.csv`), the React
-  dashboard still on hardcoded data, AI assistant.
+- Integration artefacts: team-shaped response from the API; contract example in
+  `examples/output.json` (generated from the public baseline).
+- Not integrated: the React dashboard still on hardcoded data, AI assistant.
