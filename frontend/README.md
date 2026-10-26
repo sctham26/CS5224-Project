@@ -13,7 +13,8 @@ platform is deployed end to end.
 | Dashboard and Property Comparison frontend | Implemented; uses the local Analytics API |
 | Frontend–Analytics API integration | Locally tested against FastAPI on port 8000 |
 | CSV upload | Demo-only frontend component; validates filename extension and non-empty file, but does not upload or process it |
-| Authentication and AWS/S3 ingestion | Pending integration; no authentication or presigned S3 upload workflow is implemented here |
+| Authentication (Cognito) | Integrated: `AuthGate` login/logout, access token sent on every API call via `authenticatedFetch` |
+| AWS/S3 ingestion | Pending: the upload page does not yet call `/uploads` → S3 PUT → `/jobs` |
 
 ## Technology stack
 
@@ -22,8 +23,8 @@ platform is deployed end to end.
 - Recharts for the property-comparison chart
 - ESLint with React Hooks and React Refresh plugins
 
-Install the dependencies declared in `package.json` using npm. No frontend test
-runner or test script is currently defined.
+Install the dependencies declared in `package.json` using npm. Unit tests for the
+auth modules run with Vitest (`npm test`).
 
 ## Implemented features
 
@@ -102,12 +103,17 @@ requests from that origin (CORS).
 
 ## Analytics API integration
 
-The source currently makes `GET` requests in these forms:
+The source makes `GET` requests in these forms, where `{API_BASE_URL}` comes from
+`src/api.js` (`VITE_API_BASE_URL`, else `http://localhost:8000` in development and
+`/api` in production):
 
 ```
-http://localhost:8000/entities?scope=asset
-http://localhost:8000/analysis/{entityId}?scope=asset&reporting_year={year}
+{API_BASE_URL}/entities?scope=asset
+{API_BASE_URL}/analysis/{entityId}?scope=asset&reporting_year={year}
 ```
+
+All requests go through `authenticatedFetch` (`src/auth.js`), which adds the Cognito
+access token and only sends it to URLs under `API_BASE_URL`.
 
 - The Dashboard fetches the entity list once; both the Dashboard and
   Comparison Tool use this shared response for their property selectors.
@@ -153,8 +159,8 @@ implemented.
 
 ## Planned integration and dependencies
 
-The CSV interface is not yet connected to a backend upload API. Cognito
-authentication and AWS integration are not implemented in this frontend. A
+The CSV interface is not yet connected to a backend upload API. Cognito login is
+integrated (see [Login (Cognito)](#login-cognito)); the S3 upload flow is not. A
 future presigned S3 upload flow is planned, but is not implemented: no signing
 endpoint, upload URL, or direct S3 request is configured here. Integration
 depends on confirming the backend API contract, including how an authorized
@@ -169,12 +175,11 @@ Other current dependencies and limitations:
 
 - The property list and reporting years are fetched from the local Analytics
   API when the frontend loads.
-- Analytics requests use a hard-coded local API base URL. No environment-based
-  API configuration or Vite proxy is configured.
+- The API base URL comes from `src/api.js` (see above); no Vite proxy is configured.
 - Analytics data is required to display dashboard and comparison results; the
   frontend does not provide an end-to-end deployed backend or deployment
   configuration.
-- No automated frontend test suite is currently configured.
+- Automated tests currently cover the auth modules only (`npm test`).
 
 ## Build and lint
 
@@ -190,10 +195,18 @@ To serve the production build locally after building:
 ```powershell
 npm.cmd run preview
 ```
-# SPIP frontend
 
-React/Vite dashboard, comparison and CSV demo. The cloud branch includes Cognito login/logout and authenticated API calls. See [login configuration and team contract](../docs/AUTH_CONTRACT.md) and [frontend deployment](../docs/FRONTEND_DEPLOYMENT.md).
+## Login (Cognito)
 
-Run `npm ci`, then copy `.env.example` to `.env.local`. Explicit `VITE_AUTH_MODE=demo` allows local analytics development only. For real login remove demo and supply the three public Cognito settings; use `http://localhost:5173` so callback URLs match.
+`src/main.jsx` wraps the app in `AuthGate`, so the dashboard (and its `/entities`
+request) only loads after sign-in. Login uses Cognito authorization code + PKCE
+(`oidc-client-ts`); tokens stay in memory. See the
+[login configuration and team contract](../docs/AUTH_CONTRACT.md) and
+[frontend deployment](../docs/FRONTEND_DEPLOYMENT.md).
 
-Commands: `npm run dev`, `npm run lint`, `npm test`, `npm run build`. Production requires Cognito settings and always gates the app behind login. API calls use shared `API_BASE_URL` and `authenticatedFetch`; CSV selection currently validates locally and does not upload bytes.
+- **Local development:** copy `.env.example` to `.env.local`. `VITE_AUTH_MODE=demo`
+  skips login and is for local analytics development only.
+- **Real login locally:** remove the demo setting and supply `VITE_AUTH_ISSUER`,
+  `VITE_AUTH_CLIENT_ID` and `VITE_AUTH_DOMAIN`; use `http://localhost:5173` so the
+  callback URLs match.
+- **Production builds** require the Cognito settings and always show the sign-in screen first.
