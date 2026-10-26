@@ -1,212 +1,155 @@
 # SPIP React Frontend
 
-The frontend is the React user interface for the CS5224 Sustainable Property
-Intelligence Platform (SPIP). It provides an ESG dashboard, a property
-comparison view, and a CSV upload interface currently running in local demo
-mode. The frontend is a project prototype; this README does not imply that the
-platform is deployed end to end.
+The SPIP frontend is a React application for viewing and comparing property ESG
+analytics. This document describes the current frontend implementation and
+separates verified checks from incomplete or unverified integration.
 
 ## Implementation status
 
-| Area | Status |
+| Area | Status | Details |
+|---|---|---|
+| Dashboard | Implemented | Loads asset entities, lets users search and select a property, and displays its analytics for an available reporting year. |
+| Property Comparison | Implemented | Compares two distinct asset entities for a shared reporting year and selected metric. |
+| Cognito authentication | Integrated | `AuthGate` handles sign-in and sign-out. Protected API requests use the Cognito access token. |
+| Shared API configuration | Implemented | `src/api.js` reads `VITE_API_BASE_URL`; defaults to `http://localhost:8000` in development and `/api` in production. |
+| CloudFront | Static site deployed; API checks verified | The recorded release and website checks succeeded. CloudFront `/api/health` returned 200; protected entities requests without a token or with an invalid token returned 401. Authenticated browser-to-API end-to-end functionality has not been verified. |
+| CSV upload and processing | Demo-only | The page checks the filename extension and that the file is non-empty. Real presigned S3 upload and job processing are pending. |
+
+The CloudFront deployment record is dated 2026-10-22 and identifies the
+released source commit in [frontend deployment notes](../docs/FRONTEND_DEPLOYMENT.md).
+That record does not establish that this worktree's latest frontend changes
+have been published. The later API health and authentication rejection checks
+verify reachability and negative-auth behavior only; they do not prove that an
+invited user's access token works end to end in the frontend.
+
+## Dashboard and comparison
+
+The Dashboard and Comparison pages share an asset-only property list fetched
+with `GET /entities?scope=asset`. Portfolio entities are not offered. Both
+pages use searchable property selectors. The Dashboard offers the selected
+property's available reporting years and defaults to its latest available
+year; Comparison offers the years shared by its two selected properties.
+
+The Dashboard requests the selected property's analytics using
+`GET /analysis/{entity_id}?scope=asset&reporting_year={year}`. Comparison
+requests the same endpoint for each selected property and only presents a
+numeric comparison when the metric values are compatible. The API supplies
+the entity list and reporting years; the frontend does not hardcode them.
+
+**Known limitation:** when fewer than five eligible peers exist, the
+performance-gap display may misleadingly show **“Not Flagged”**. Backend and
+frontend handling of this case still needs correction.
+
+## Authentication and API requests
+
+`src/main.jsx` wraps the application in `AuthGate`. In normal mode, the
+dashboard and its API requests are unavailable until Cognito sign-in completes.
+The Cognito flow uses authorization code with PKCE via `oidc-client-ts`.
+`authenticatedFetch` obtains the access token and sends it only to the
+configured API origin/path; it refuses to send credentials to other origins,
+including a presigned S3 URL.
+
+All frontend API calls share the base URL from `src/api.js`:
+
+| Build environment | Default API base |
 |---|---|
-| Dashboard and Property Comparison frontend | Implemented; uses the local Analytics API |
-| Frontend–Analytics API integration | Locally tested against FastAPI on port 8000 |
-| CSV upload | Demo-only frontend component; validates filename extension and non-empty file, but does not upload or process it |
-| Authentication (Cognito) | Integrated: `AuthGate` login/logout, access token sent on every API call via `authenticatedFetch` |
-| AWS/S3 ingestion | Pending: the upload page does not yet call `/uploads` → S3 PUT → `/jobs` |
+| Vite development | `http://localhost:8000` |
+| Production build | `/api` |
 
-## Technology stack
+Set `VITE_API_BASE_URL` to override either default at build time. Vite
+environment variables are public and must not contain secrets.
 
-- React 19 and React DOM
-- Vite 8 for local development and production builds
-- Recharts for the property-comparison chart
-- ESLint with React Hooks and React Refresh plugins
+For local unauthenticated development, copy `frontend/.env.example` to
+`frontend/.env.local`; it selects the development-only `VITE_AUTH_MODE=demo`.
+The frontend `.gitignore` excludes `*.local`, but **do not commit `.env.local`**
+or put credentials/secrets in it. For real local Cognito sign-in, remove demo
+mode and provide `VITE_AUTH_ISSUER`, `VITE_AUTH_CLIENT_ID`, and
+`VITE_AUTH_DOMAIN`; the registered local callback uses
+`http://localhost:5173/auth/callback`. See the [authentication contract](../docs/AUTH_CONTRACT.md).
 
-Install the dependencies declared in `package.json` using npm. Unit tests for the
-auth modules run with Vitest (`npm test`).
+## Local setup on Windows
 
-## Implemented features
-
-### ESG Dashboard
-
-The Dashboard and Comparison Tool share an asset-level entity list loaded
-using `GET /entities?scope=asset`. Portfolio-level entities are excluded from
-property selection. The Dashboard provides a searchable property selector
-whose options show the building name and entity ID, plus reporting-year options
-from that entity's `reporting_years`. A newly selected property defaults to
-its `latest_reporting_year` when available. It shows the energy intensity
-metric and its peer median, percentile, and gap status, plus peer-cohort
-details, an ESG metrics table, and flagged gap-analysis recommendations when
-present. Loading, empty-list, missing-year, and request-error states are
-displayed in the UI.
-
-### Property Comparison Tool
-
-The comparison page lets users choose two different properties from the same
-searchable, asset-level entity list as the Dashboard, a reporting year shared
-by both properties, and an ESG metric. It retrieves both properties from the
-Analytics API and displays the metric values, a chart and a comparison summary
-when the selected values are comparable. It displays an unavailable message
-instead of presenting a direct numerical comparison when the selected metric
-is missing or incompatible.
-
-### CSV upload interface
-
-The Upload Data page lets the user select a CSV file, displays its filename and
-size, and rejects files that do not have a `.csv` filename extension or have
-zero bytes. The Upload button is enabled only for a selected file that passes
-those checks.
-
-This is a demo-only frontend component, not a completed upload workflow. The
-handler is currently a local demo: clicking Upload shows a brief loading state
-and then a message that the file passed local validation only. The file is
-**not** sent to a server, stored, or processed. The interface does not parse
-CSV contents, validate headers or rows, impose a file-size limit, or verify
-that the selected file's contents are actually CSV data. A template download
-is not yet provided; the frontend template still needs to be aligned with the
-agreed project input schema.
-
-## Run locally on Windows
-
-Install a Node.js/npm version compatible with the Vite version in
-`package.json`. From PowerShell:
+Install a Node.js version compatible with the Vite version in `package.json`.
+In PowerShell, from the repository checkout:
 
 ```powershell
-Set-Location 'C:\path\to\CS5224-Project\frontend'
-npm.cmd install
+Set-Location 'C:\path\to\CS5224-Docs\frontend'
+npm.cmd ci
+Copy-Item .env.example .env.local
 npm.cmd run dev
 ```
 
-Vite prints the local development URL in the terminal (normally
-`http://localhost:5173`). Open it in a browser. In PowerShell, use `npm.cmd`
-if the execution policy prevents running the `npm.ps1` script; in Command
-Prompt, the usual `npm` commands can be used.
+Open the Vite URL printed in the terminal (normally
+`http://localhost:5173`). `npm.cmd` avoids PowerShell execution-policy issues
+with `npm.ps1`. The demo environment skips Cognito only for local development.
 
-The Dashboard and Comparison pages make requests to the local Python Analytics
-API at `http://localhost:8000`. Start that API separately using its own
-worktree. From PowerShell, create a virtual environment and use its Python
-executable directly (activation is not required):
+## Local FastAPI integration verification
+
+Run the FastAPI analytics service in a second PowerShell window. From the
+repository root:
 
 ```powershell
-Set-Location 'C:\path\to\CS5224-Backend'
+Set-Location 'C:\path\to\CS5224-Docs'
 python -m venv .venv
-
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-
 .\.venv\Scripts\python.exe -m uvicorn api:app --app-dir src --port 8000
 ```
 
-If the API is unavailable, the frontend displays request errors. Since Vite
-serves the frontend on a different local origin, the API must allow browser
-requests from that origin (CORS).
-
-## Analytics API integration
-
-The source makes `GET` requests in these forms, where `{API_BASE_URL}` comes from
-`src/api.js` (`VITE_API_BASE_URL`, else `http://localhost:8000` in development and
-`/api` in production):
-
-```
-{API_BASE_URL}/entities?scope=asset
-{API_BASE_URL}/analysis/{entityId}?scope=asset&reporting_year={year}
-```
-
-All requests go through `authenticatedFetch` (`src/auth.js`), which adds the Cognito
-access token and only sends it to URLs under `API_BASE_URL`.
-
-- The Dashboard fetches the entity list once; both the Dashboard and
-  Comparison Tool use this shared response for their property selectors.
-- `scope=asset` limits the selection list to asset-level/building entities;
-  portfolio-level entities are excluded from both selectors.
-- The entity-list response contains `count`, `tenant_id`, and `entities`.
-  Each entity provides `entity_id`, `entity_name`, `postal_code`,
-  `property_type`, `region`, `scope`, `reporting_years`, and
-  `latest_reporting_year`. The UI uses the entity IDs and reporting years
-  returned by the API and does not hardcode tenant identity.
-- `{entityId}` is URL-encoded by the client. The dashboard sends the selected
-  `entity_id`; the comparison page sends one request for each selected ID.
-- `scope` is set to `asset` for both the entity-list and analysis requests.
-- `reporting_year` is selected from the entity's available years; comparison
-  only offers years present for both selected entities.
-- A non-success HTTP response is treated as an error; successful responses are
-  read as JSON.
-
-Based on the fields accessed by the UI, the JSON response is expected to
-provide `entity_id`, `entity_name`, `reporting_year`, and a `metrics` array.
-Metric entries are read for `metric_code`, `standardised_value`,
-`canonical_unit`, `comparability_status`, `performance_direction`,
-`benchmark.peer_median`, `benchmark.empirical_percentile`, and
-`gap_analysis` fields including `is_flagged`, `gap_type`, and
-`recommendation_signal`. The dashboard also reads `peer_cohort` fields
-including `property_type`, `region`, `sample_size_n`, `fallback_applied`, and
-`fallback_reason`. This describes what the frontend consumes; it is not a
-replacement for a confirmed API contract.
-
-## Local Integration Verification
-
-In local testing, the frontend connected to the separately running FastAPI
-Analytics API on port `8000`; `GET /entities?scope=asset` returned an
-asset-only entity list, and the selected analytics requests returned HTTP
-`200`. Switching properties refreshed the dashboard data, and the Comparison
-page rendered comparison visualisations for comparable results. The CSV
-page's demo validation was also tested: valid non-empty `.csv` selections
-enabled the button and showed the local demo result, while non-CSV and empty
-files were rejected. The CSV demo did not upload, store, or process files.
-This documents locally tested functionality only; it does not mean the
-platform is deployed end to end or that authentication/AWS integration is
-implemented.
-
-## Planned integration and dependencies
-
-The CSV interface is not yet connected to a backend upload API. Cognito login is
-integrated (see [Login (Cognito)](#login-cognito)); the S3 upload flow is not. A
-future presigned S3 upload flow is planned, but is not implemented: no signing
-endpoint, upload URL, or direct S3 request is configured here. Integration
-depends on confirming the backend API contract, including how an authorized
-upload URL is requested, how the frontend template aligns with the agreed CSV
-input schema, what metadata is required, how validation and upload errors are
-reported, and how successful uploads are confirmed. Until these details are
-implemented, keep the page in demo mode; do not treat its local demo message
-as a completed upload. AWS/Cognito/S3 integration is pending, not part of the
-locally verified frontend–FastAPI analytics integration.
-
-Other current dependencies and limitations:
-
-- The property list and reporting years are fetched from the local Analytics
-  API when the frontend loads.
-- The API base URL comes from `src/api.js` (see above); no Vite proxy is configured.
-- Analytics data is required to display dashboard and comparison results; the
-  frontend does not provide an end-to-end deployed backend or deployment
-  configuration.
-- Automated tests currently cover the auth modules only (`npm test`).
-
-## Build and lint
-
-Run these commands from the `frontend` directory:
+The local API uses the CSV data source by default and allows local auth
+verification to remain disabled unless configured otherwise. Check its
+reachability and asset list from another PowerShell window:
 
 ```powershell
+Invoke-RestMethod 'http://localhost:8000/health'
+$entities = Invoke-RestMethod 'http://localhost:8000/entities?scope=asset'
+$entities.entities | Select-Object entity_id, entity_name, reporting_years
+```
+
+With the frontend running in local demo mode, open Dashboard and Comparison.
+Select properties and years from the API response and confirm that the
+analytics requests render results. If requests fail in the browser, check that
+the API is running on port 8000 and that its CORS allow-list includes
+`http://localhost:5173`. These are verification steps, not a claim that a local
+run was performed for this README update.
+
+## CSV upload: demo only
+
+The CSV page checks only that a selected filename ends in `.csv` and that the
+file is non-empty. Its demo handler reports local validation; it does not send,
+store, parse, or process the file. This does not validate that the contents
+are CSV data. **Real presigned S3 upload and backend job submission/processing
+are pending**; do not treat the demo result as a completed upload.
+
+## Tests and production build
+
+Run from `frontend` in PowerShell:
+
+```powershell
+npm.cmd test
 npm.cmd run lint
 npm.cmd run build
 ```
 
-To serve the production build locally after building:
+Vitest runs the frontend tests, ESLint checks source, and the production build
+is written to `dist/`. To serve that build locally:
 
 ```powershell
 npm.cmd run preview
 ```
 
-## Login (Cognito)
+## CloudFront deployment and verification
 
-`src/main.jsx` wraps the app in `AuthGate`, so the dashboard (and its `/entities`
-request) only loads after sign-in. Login uses Cognito authorization code + PKCE
-(`oidc-client-ts`); tokens stay in memory. See the
-[login configuration and team contract](../docs/AUTH_CONTRACT.md) and
-[frontend deployment](../docs/FRONTEND_DEPLOYMENT.md).
+The deployment notes record a successful static CloudFront release and checks
+of the served HTML, JavaScript/CSS assets, and release metadata. The current
+CloudFront API route has also passed `GET /api/health` with HTTP 200 and
+protected `GET /api/entities` checks with no token and with an invalid token,
+both returning HTTP 401. These checks confirm static hosting, API reachability,
+and rejection of missing/invalid credentials.
 
-- **Local development:** copy `.env.example` to `.env.local`. `VITE_AUTH_MODE=demo`
-  skips login and is for local analytics development only.
-- **Real login locally:** remove the demo setting and supply `VITE_AUTH_ISSUER`,
-  `VITE_AUTH_CLIENT_ID` and `VITE_AUTH_DOMAIN`; use `http://localhost:5173` so the
-  callback URLs match.
-- **Production builds** require the Cognito settings and always show the sign-in screen first.
+They do **not** verify sign-in and analytics in an authenticated browser
+session, real-user token acceptance, or the complete upload-to-job workflow.
+The current frontend publication status must be checked against the recorded
+release commit; a successful CloudFront deployment or API health response is
+not evidence that the latest worktree has been deployed or that authenticated
+end-to-end behavior works. See [frontend deployment evidence](../docs/FRONTEND_DEPLOYMENT.md)
+and [cloud API integration status](../docs/API_INTEGRATION.md).
