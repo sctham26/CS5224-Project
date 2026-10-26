@@ -57,3 +57,9 @@ uvx iam-policy-autopilot@latest generate-policies backend_cloud/release/handler.
 ```
 
 The generated baseline includes optional API permissions for role/tag/stack-policy changes. This fixed handler supplies none of those fields; its deployed role is scoped to the actual named runtime stack and project repository. GitHub never receives the broker's CloudFormation update permission.
+
+### Confirmed automatic release — 2026-10-26
+
+[Automatic release 40351246994](https://github.com/sctham26/CS5224-Project/actions/runs/40351246994) completed successfully using backend source/entrypoint `a54d294` and reusable cloud workflow `4210aa6`. The backend branch changes from the reviewed application source `e8a9f65` are limited to the workflow file. The run passed all 107 backend tests, OIDC authentication, ECR publication, CloudFormation parameter updates, both services' stable task-revision checks, CloudFront health=200 and missing/invalid-token rejection=401. Release image: `825990809862.dkr.ecr.ap-southeast-1.amazonaws.com/spip-backend@sha256:ac2adc770fe03eca156465d1fc762db4c75dcac60f433d07a340ccef9b9b955e`.
+
+The cloud implementation also passed 29 infrastructure tests, 10 script tests, actionlint and push/PR checks. No database migration, membership change or privileged operator image update was performed by this automatic release. Application owners can now publish routine backend changes through the same branch workflow without personal AWS credentials.
