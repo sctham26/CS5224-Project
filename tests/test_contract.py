@@ -109,3 +109,39 @@ def test_unknown_metric_code_rejected():
 def test_missing_entity_raises_not_found():
     with pytest.raises(EntityNotFound):
         run(data_path=THEIR_CSV, entity_id="NOPE")
+
+
+def test_insufficient_peers_yields_null_gap(tmp_path):
+    # Target + 2 peers < min 5: disclosed, benchmarked nowhere.
+    import pandas as pd
+
+    cols = [
+        "tenant_id", "entity_id", "entity_name", "property_type", "region",
+        "reporting_scope", "reporting_year", "metric_code",
+        "standardised_value", "canonical_unit", "comparability_status",
+    ]
+    rows = []
+    for i, eid in enumerate(["TGT", "P1", "P2"]):
+        rows.append({
+            "tenant_id": "tenant_alpha" if eid == "TGT" else "PUBLIC",
+            "entity_id": eid,
+            "entity_name": f"Entity {eid}",
+            "property_type": "OFFICE",
+            "region": "SG",
+            "reporting_scope": "ASSET",
+            "reporting_year": 2025,
+            "metric_code": "ENERGY_INTENSITY_EUI",
+            "standardised_value": 100.0 + i,
+            "canonical_unit": "kWh/m2/yr",
+            "comparability_status": "COMPARABLE",
+        })
+    path = tmp_path / "few_peers.csv"
+    pd.DataFrame(rows, columns=cols).to_csv(path, index=False)
+
+    out = run(data_path=str(path), entity_id="TGT", reporting_year=2025)
+    eui = next(m for m in out["metrics"] if m["metric_code"] == "ENERGY_INTENSITY_EUI")
+    assert eui["standardised_value"] is not None
+    assert eui["benchmark"] is None
+    # Not benchmarked: neither "no gap" nor a flagged gap.
+    assert eui["gap_analysis"]["gap_type"] is None
+    assert eui["gap_analysis"]["is_flagged"] is None
