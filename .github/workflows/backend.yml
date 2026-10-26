@@ -51,7 +51,7 @@ jobs:
       - name: Fetch pinned backend migrations without modifying application branches
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 60f12ae44571cbf714510c7ea9d7fecdde83b09b
+          ref: e8a9f65d377bf6d5b1ac59f5c58afbfdc63d6971
           path: backend-source
           persist-credentials: false
       - name: Exercise database grants and tenant-context isolation using disposable PostgreSQL

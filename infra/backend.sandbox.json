@@ -18,7 +18,7 @@
   "authorization_scopes": [
     "spip/access"
   ],
-  "api_image": "825990809862.dkr.ecr.ap-southeast-1.amazonaws.com/spip-backend@sha256:b901b235279230cf21e90d670a12d67fd7d817255909fd9173dc33543e8335f6",
-  "worker_image": "825990809862.dkr.ecr.ap-southeast-1.amazonaws.com/spip-backend@sha256:b901b235279230cf21e90d670a12d67fd7d817255909fd9173dc33543e8335f6",
+  "api_image": "825990809862.dkr.ecr.ap-southeast-1.amazonaws.com/spip-backend@sha256:817e9a4eb9f48cd93d07bcee2601cd19acb4d384eca17833e632d5d339cf1e08",
+  "worker_image": "825990809862.dkr.ecr.ap-southeast-1.amazonaws.com/spip-backend@sha256:817e9a4eb9f48cd93d07bcee2601cd19acb4d384eca17833e632d5d339cf1e08",
   "job_lease_seconds": 840
 }

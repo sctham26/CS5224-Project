@@ -8,6 +8,8 @@ Prepared 2026-10-23 for the SPIP team. Source branch: `cloud-config`; PR target:
 
 **Backend image refresh (2026-10-25):** backend commit `60f12ae` fixes S3 presigned uploads to use SigV4 for the KMS-encrypted tenant bucket. The cloud release pins the rebuilt immutable image; see [image refresh evidence and rollback](API_INTEGRATION.md#backend-image-refresh--sigv4-upload-fix-2026-10-25). This source update needs no database migration or membership change.
 
+**Latest backend release (2026-10-26):** backend `e8a9f65` fixes insufficient-peer results to return null benchmark/gap/flag values. The rebuilt image and CI source pin are recorded in the [API integration guide](API_INTEGRATION.md). No schema or membership change is required.
+
 ## 1. What is delivered
 
 | Component | Implemented | Verification / deployment |

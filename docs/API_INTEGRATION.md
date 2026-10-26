@@ -1,6 +1,6 @@
 # Cloud API integration and operator handoff
 
-Prepared 2026-10-25. Only cloud configuration, packaging and operator scripts are changed here. Application source is exported unchanged from backend commit `60f12ae44571cbf714510c7ea9d7fecdde83b09b`. Frontend branch `a463bfb` is owned by the frontend team; the old frontend copy in this branch is not the source for this integration.
+Prepared 2026-10-25. Only cloud configuration, packaging and operator scripts are changed here. Application source is exported unchanged from backend commit `e8a9f65d377bf6d5b1ac59f5c58afbfdc63d6971`. Frontend branch `a463bfb` is owned by the frontend team; the old frontend copy in this branch is not the source for this integration.
 
 ## Public and backend paths
 
@@ -17,7 +17,7 @@ CloudFront selects the HTTPS API Gateway origin for `api/*` (and bare `api`), re
 
 The public `/api` prefix is a browser routing convention; the backend does not need to add it. An unauthenticated liveness response proves reachability only, not database readiness or authorization.
 
-The synchronous development `/analyze` endpoint is not exposed by the gateway. Application request bodies and response JSON are owned by the backend; use the pinned [backend interface](https://github.com/sctham26/CS5224-Project/blob/60f12ae44571cbf714510c7ea9d7fecdde83b09b/INTERFACES.md) and `src/api.py`/`src/jobs.py`. The previous cloud contract v0.1 was a proposal, not proof that the backend implemented its `upload_id`/operation envelope. The current backend uses `upload_key` and its own job request fields.
+The synchronous development `/analyze` endpoint is not exposed by the gateway. Application request bodies and response JSON are owned by the backend; use the pinned [backend interface](https://github.com/sctham26/CS5224-Project/blob/e8a9f65d377bf6d5b1ac59f5c58afbfdc63d6971/INTERFACES.md) and `src/api.py`/`src/jobs.py`. The previous cloud contract v0.1 was a proposal, not proof that the backend implemented its `upload_id`/operation envelope. The current backend uses `upload_key` and its own job request fields.
 
 ## Frontend team's required changes
 
@@ -82,7 +82,7 @@ All four membership tasks exited zero. A separate task using the actual applicat
 
 ## Acceptance boundaries
 
-Local tests cover API prefix removal, preserving Authorization/query/method, uncached routing, explicit auth settings, and real backend migrations/owner permissions in disposable PostgreSQL. The unchanged backend suite passes 106 tests in its Linux image, including the SigV4 presigning regression. Actual cloud deployment/test evidence is recorded separately below once confirmed. Frontend changes, real-user token acceptance and end-to-end uploaded-data processing must not be inferred solely from health/401 tests.
+Local tests cover API prefix removal, preserving Authorization/query/method, uncached routing, explicit auth settings, and real backend migrations/owner permissions in disposable PostgreSQL. The unchanged backend suite passes 107 tests in its Linux image, including the SigV4 presigning and insufficient-peer result regressions. Actual cloud deployment/test evidence is recorded separately below once confirmed. Frontend changes, real-user token acceptance and end-to-end uploaded-data processing must not be inferred solely from health/401 tests.
 
 
 ## Confirmed sandbox deployment — 2026-10-25
@@ -105,3 +105,12 @@ The backend team supplied commit `60f12ae44571cbf714510c7ea9d7fecdde83b09b` on `
 - All 106 backend tests passed inside the rebuilt Linux image (test code and fixture data mounted read-only); all 21 infrastructure tests passed. The CDK change set showed only image/task-definition updates and service task references. No SQL migration or baseline reimport is needed for this source change, and no membership update is part of this release.
 - Rollback: restore the previous API/worker digest recorded in the initial deployment section, review the CDK diff with full runtime/operations context, and redeploy the affected stacks. Do not re-bootstrap the database to roll back an image.
 - Live verification: a one-off task running API task definition revision 2 exited zero after asserting regional SigV4 (`AWS4-HMAC-SHA256`) presigned PUT generation using actual ECS task credentials. The signed URL/credentials were not logged, and no object was uploaded. CloudFront health=200 and missing/invalid-token rejection=401 also passed. This does not claim user-token upload/job E2E completion.
+
+## Backend image refresh — insufficient-peer contract fix (2026-10-26)
+
+Backend commit `e8a9f65d377bf6d5b1ac59f5c58afbfdc63d6971` changes the analysis contract for a disclosed/comparable metric whose peer cohort remains too small after fallback: `benchmark`, `gap_type` and `is_flagged` are all `null`. This means "not benchmarked", rather than the previous misleading `gap_type: "NONE"` / `is_flagged: false`. The backend team added a regression test; frontend owners should render this state as insufficient peer data. No application source was edited in `cloud-config`.
+
+- Release image: `825990809862.dkr.ecr.ap-southeast-1.amazonaws.com/spip-backend@sha256:817e9a4eb9f48cd93d07bcee2601cd19acb4d384eca17833e632d5d339cf1e08`; cloud-support hash remains `3656d9c835efcd1784bc93a1900dd1f8b2791deafc28efb223a3567afc4e56b8`. API, worker and operator task definitions use this immutable image; CI's backend-source pin is the same commit.
+- All 107 backend tests passed inside the rebuilt Linux image with tests/fixtures mounted read-only. No SQL, dependency, route, authentication or membership changes are required by this backend source update.
+- The backend team's pinned README reports successful upload → S3 PUT → queued job → worker result, plus rejection of another tenant's upload key. These are teammate-reported results from the previous release, not a fresh cloud-module E2E run. Private entity isolation and group-based permissions remain separate acceptance items.
+- To roll back this release, restore image `825990809862.dkr.ecr.ap-southeast-1.amazonaws.com/spip-backend@sha256:b901b235279230cf21e90d670a12d67fd7d817255909fd9173dc33543e8335f6` in the sandbox config, review the full-context CDK diff and deploy runtime/operations. No database bootstrap or baseline import is needed.
