@@ -12,6 +12,23 @@ def aws(*args):
         "--output", "json", "--no-cli-pager"], text=True))
 
 
+def verify_services(result, outputs):
+    expected = {outputs["ApiServiceArn"]: outputs["ApiTaskDefinitionArn"],
+                outputs["WorkerServiceArn"]: outputs["WorkerTaskDefinitionArn"]}
+    services = result["services"]
+    if (result.get("failures") or len(services) != 2 or
+            {s["serviceArn"] for s in services} != set(expected)):
+        raise ValueError("Could not verify both application services")
+    for service in services:
+        if (service["runningCount"] != 1 or service["pendingCount"] != 0 or
+                len(service["deployments"]) != 1 or service["deployments"][0]["rolloutState"] != "COMPLETED"):
+            raise ValueError("Application service is not stable")
+        # Stack parameters were checked against the requested digest. Each service
+        # must use that stack's current immutable task-definition revision.
+        if service["taskDefinition"] != expected[service["serviceArn"]]:
+            raise ValueError("Service is not running the stack's released task definition")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("metadata", type=Path)
@@ -54,16 +71,7 @@ def main():
     outputs = {p["OutputKey"]: p["OutputValue"] for p in stack["Outputs"]}
     services = aws("ecs", "describe-services", "--cluster", outputs["ClusterName"], "--services",
         outputs["ApiServiceArn"], outputs["WorkerServiceArn"])
-    if services.get("failures") or len(services["services"]) != 2:
-        raise SystemExit("Could not verify both application services")
-    for service in services["services"]:
-        if (service["runningCount"] != 1 or service["pendingCount"] != 0 or
-                len(service["deployments"]) != 1 or service["deployments"][0]["rolloutState"] != "COMPLETED"):
-            raise SystemExit("Application service is not stable")
-        definition = aws("ecs", "describe-task-definition", "--task-definition", service["taskDefinition"])
-        containers = definition["taskDefinition"]["containerDefinitions"]
-        if len(containers) != 1 or containers[0]["image"] != metadata["image"]:
-            raise SystemExit("Service is not running the requested immutable image")
+    verify_services(services, outputs)
     print("API and worker are stable on", metadata["image"])
 
 

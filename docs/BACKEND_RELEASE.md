@@ -13,7 +13,7 @@ The Actions artifact `backend-release-<run>-<attempt>` records backend commit, c
 ## Permissions and ownership
 
 - GitHub uses OIDC role `spip-backend-github-release`, trusted only for this repository's immutable identity and `backend-analysis` ref. PRs and other branches are not trusted.
-- The role can upload images only to `spip-backend`, invoke only `spip-backend-release`, and read the one runtime stack/application service/task definitions needed for verification. It cannot directly update ECS, change a CloudFormation template, pass IAM roles or read Secrets Manager credentials.
+- The role can upload images only to `spip-backend`, invoke only `spip-backend-release`, and read the one runtime stack and two application services needed for verification. It cannot directly update ECS, change a CloudFormation template, pass IAM roles or read Secrets Manager credentials. Verification matches live digest parameters and service task revisions against stack outputs; no account-wide task-definition read permission is needed.
 - The cloud-owned release function accepts only a validated digest, source SHA and run ID. It verifies an existing project ECR image/source tag, then uses **the previous CloudFormation template**, preserving all parameters except `ApiImageDigest` and `WorkerImageDigest`. Callers cannot supply roles, templates, stack names or arbitrary parameters.
 - Database, migrations/importers, Cognito, memberships, networking and IAM stay with cloud operations. Operator task definitions are deliberately not updated by routine backend releases. The normal API/worker roles retain their existing application permissions.
 

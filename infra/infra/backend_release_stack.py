@@ -38,9 +38,5 @@ class BackendReleaseStack(Stack):
         role.add_to_policy(iam.PolicyStatement(actions=["cloudformation:DescribeStacks"], resources=[runtime_arn]))
         role.add_to_policy(iam.PolicyStatement(actions=["ecs:DescribeServices"],
             resources=[runtime.api_service.service_arn, runtime.worker_service.service_arn]))
-        role.add_to_policy(iam.PolicyStatement(actions=["ecs:DescribeTaskDefinition"], resources=[
-            f"arn:{self.partition}:ecs:{self.region}:{self.account}:task-definition/BackendRuntimeStackApiTask416AE6AF:*",
-            f"arn:{self.partition}:ecs:{self.region}:{self.account}:task-definition/BackendRuntimeStackWorkerTaskB864145B:*",
-        ]))
         CfnOutput(self, "GitHubRoleArn", value=role.role_arn)
         CfnOutput(self, "ReleaseFunctionName", value=broker.function_name)
