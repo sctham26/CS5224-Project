@@ -1,0 +1,13 @@
+name: Deploy backend sandbox
+on:
+  push:
+    branches: [backend-analysis]
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  deploy:
+    uses: sctham26/CS5224-Project/.github/workflows/backend-release.yml@42eb2f1e36ff2e7c983998d6b35a923a14d7c033
+    with:
+      cloud_ref: 42eb2f1e36ff2e7c983998d6b35a923a14d7c033
