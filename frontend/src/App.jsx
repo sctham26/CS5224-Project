@@ -8,7 +8,8 @@ import {
 import { useState, useEffect } from 'react'
 import './App.css'
 
-const API_BASE_URL = 'http://localhost:8000'
+import { API_BASE_URL } from './api'
+import { authenticatedFetch } from './auth'
 
 function App() {
   // Remember which page the user selected
@@ -29,7 +30,7 @@ function App() {
         setEntitiesLoading(true)
         setEntitiesError(null)
 
-        const response = await fetch(`${API_BASE_URL}/entities?scope=asset`, {
+        const response = await authenticatedFetch(`${API_BASE_URL}/entities?scope=asset`, {
           signal: controller.signal
         })
 
@@ -105,7 +106,7 @@ function App() {
 
     async function loadAnalytics() {
       try {
-        const response = await fetch(
+        const response = await authenticatedFetch(
           `${API_BASE_URL}/analysis/${encodeURIComponent(selectedEntity)}?scope=asset&reporting_year=${encodeURIComponent(selectedYear)}`,
           { signal: controller.signal }
         )

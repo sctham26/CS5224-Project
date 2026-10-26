@@ -1,0 +1,152 @@
+{
+  "source_url": "https://data.gov.sg/api/action/datastore_search?resource_id=d_3de362b580b2dd2fd50cc1006d4edd4f&limit=100",
+  "retrieved_on": "2026-10-17",
+  "data": {
+    "success": true,
+    "result": {
+      "resource_id": "d_3de362b580b2dd2fd50cc1006d4edd4f",
+      "fields": [
+        {
+          "type": "numeric",
+          "id": "year"
+        },
+        {
+          "type": "numeric",
+          "id": "avg_opt_margin_kgco2-per-kwh"
+        },
+        {
+          "type": "numeric",
+          "id": "build_margin_kgco2-per-kwh"
+        },
+        {
+          "type": "numeric",
+          "id": "upstream_fugitive_methane_emission_factor_kgch4-per-kwh"
+        },
+        {
+          "type": "int4",
+          "id": "_id"
+        }
+      ],
+      "records": [
+        {
+          "_id": 1,
+          "year": "2005",
+          "avg_opt_margin_kgco2-per-kwh": "0.5255",
+          "build_margin_kgco2-per-kwh": "0.4205",
+          "upstream_fugitive_methane_emission_factor_kgch4-per-kwh": "0.00216"
+        },
+        {
+          "_id": 2,
+          "year": "2006",
+          "avg_opt_margin_kgco2-per-kwh": "0.5300",
+          "build_margin_kgco2-per-kwh": "0.4225",
+          "upstream_fugitive_methane_emission_factor_kgch4-per-kwh": "0.00218"
+        },
+        {
+          "_id": 3,
+          "year": "2007",
+          "avg_opt_margin_kgco2-per-kwh": "0.5046",
+          "build_margin_kgco2-per-kwh": "0.4352",
+          "upstream_fugitive_methane_emission_factor_kgch4-per-kwh": "0.00225"
+        },
+        {
+          "_id": 4,
+          "year": "2008",
+          "avg_opt_margin_kgco2-per-kwh": "0.4965",
+          "build_margin_kgco2-per-kwh": "0.4264",
+          "upstream_fugitive_methane_emission_factor_kgch4-per-kwh": "0.00221"
+        },
+        {
+          "_id": 5,
+          "year": "2009",
+          "avg_opt_margin_kgco2-per-kwh": "0.4973",
+          "build_margin_kgco2-per-kwh": "0.4208",
+          "upstream_fugitive_methane_emission_factor_kgch4-per-kwh": "0.00222"
+        },
+        {
+          "_id": 6,
+          "year": "2010",
+          "avg_opt_margin_kgco2-per-kwh": "0.5083",
+          "build_margin_kgco2-per-kwh": "0.4319",
+          "upstream_fugitive_methane_emission_factor_kgch4-per-kwh": "0.00222"
+        },
+        {
+          "_id": 7,
+          "year": "2011",
+          "avg_opt_margin_kgco2-per-kwh": "0.5085",
+          "build_margin_kgco2-per-kwh": "0.4578",
+          "upstream_fugitive_methane_emission_factor_kgch4-per-kwh": "0.00228"
+        },
+        {
+          "_id": 8,
+          "year": "2012",
+          "avg_opt_margin_kgco2-per-kwh": "0.4778",
+          "build_margin_kgco2-per-kwh": "0.4164",
+          "upstream_fugitive_methane_emission_factor_kgch4-per-kwh": "0.00218"
+        },
+        {
+          "_id": 9,
+          "year": "2013",
+          "avg_opt_margin_kgco2-per-kwh": "0.4388",
+          "build_margin_kgco2-per-kwh": "0.4137",
+          "upstream_fugitive_methane_emission_factor_kgch4-per-kwh": "0.00218"
+        },
+        {
+          "_id": 10,
+          "year": "2014",
+          "avg_opt_margin_kgco2-per-kwh": "0.4277",
+          "build_margin_kgco2-per-kwh": "0.4086",
+          "upstream_fugitive_methane_emission_factor_kgch4-per-kwh": "0.00220"
+        },
+        {
+          "_id": 11,
+          "year": "2015",
+          "avg_opt_margin_kgco2-per-kwh": "0.4224",
+          "build_margin_kgco2-per-kwh": "0.3941",
+          "upstream_fugitive_methane_emission_factor_kgch4-per-kwh": "0.00217"
+        },
+        {
+          "_id": 12,
+          "year": "2016",
+          "avg_opt_margin_kgco2-per-kwh": "0.4237",
+          "build_margin_kgco2-per-kwh": "0.3977",
+          "upstream_fugitive_methane_emission_factor_kgch4-per-kwh": "0.00216"
+        },
+        {
+          "_id": 13,
+          "year": "2017",
+          "avg_opt_margin_kgco2-per-kwh": "0.4210",
+          "build_margin_kgco2-per-kwh": "0.4018",
+          "upstream_fugitive_methane_emission_factor_kgch4-per-kwh": "0.00198"
+        },
+        {
+          "_id": 14,
+          "year": "2018",
+          "avg_opt_margin_kgco2-per-kwh": "0.4206",
+          "build_margin_kgco2-per-kwh": "0.4031",
+          "upstream_fugitive_methane_emission_factor_kgch4-per-kwh": "0.00213"
+        },
+        {
+          "_id": 15,
+          "year": "2019",
+          "avg_opt_margin_kgco2-per-kwh": "0.4085",
+          "build_margin_kgco2-per-kwh": "0.4013",
+          "upstream_fugitive_methane_emission_factor_kgch4-per-kwh": "0.00212"
+        },
+        {
+          "_id": 16,
+          "year": "2020",
+          "avg_opt_margin_kgco2-per-kwh": "0.4080",
+          "build_margin_kgco2-per-kwh": "0.4022",
+          "upstream_fugitive_methane_emission_factor_kgch4-per-kwh": "0.00212"
+        }
+      ],
+      "_links": {
+        "start": "/api/action/datastore_search?resource_id=d_3de362b580b2dd2fd50cc1006d4edd4f&limit=100",
+        "next": "/api/action/datastore_search?resource_id=d_3de362b580b2dd2fd50cc1006d4edd4f&offset=100&limit=100"
+      },
+      "total": 16,
+      "limit": 100
+    }
+  }
+}

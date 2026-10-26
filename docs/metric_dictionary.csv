@@ -1,0 +1,10 @@
+metric_code,metric_name,canonical_unit,performance_direction,reporting_scopes,availability
+ENERGY_INTENSITY_EUI,Building Electricity Energy Use Intensity (BCA EUI Definition),kWh/m2/yr,LOWER_IS_BETTER,ASSET;PORTFOLIO,BCA public data and private sample
+CARBON_INTENSITY_SCOPE2,Electricity grid CO2 intensity proxy (not all-GHG Scope 2),kgCO2e/m2/yr,LOWER_IS_BETTER,ASSET;PORTFOLIO,Derived BCA electricity CO2 proxy and private sample
+ENERGY_INTENSITY_REPORTED_TOTAL,Source-reported portfolio total energy intensity (includes purchased thermal energy),kWh/m2/yr,LOWER_IS_BETTER,PORTFOLIO,Two SGX report values; restricted boundaries
+GREEN_CERT_LEVEL,BCA Green Mark Certification Level,ORDINAL_0_4,HIGHER_IS_BETTER,ASSET,BCA 2020 certification snapshot and private sample
+WATER_INTENSITY,Water Use Intensity,m3/m2/yr,LOWER_IS_BETTER,ASSET;PORTFOLIO,Private sample only; no public peers
+SCOPE_1_EMISSIONS,Direct GHG Emissions (Scope 1),tCO2e,LOWER_IS_BETTER,ASSET;PORTFOLIO,Synthetic utility calculation examples only
+SCOPE_2_EMISSIONS,Indirect GHG Emissions from Purchased Electricity (Scope 2),tCO2e,LOWER_IS_BETTER,ASSET;PORTFOLIO,Synthetic utility calculation examples only
+CARBON_INTENSITY_SCOPE1_2,Combined Scope 1 + Scope 2 Operational Carbon Intensity,kgCO2e/m2/yr,LOWER_IS_BETTER,ASSET;PORTFOLIO,Synthetic utility calculation examples only
+TOTAL_ENERGY_INTENSITY,Total electricity + gas + diesel intensity,kWh/m2/yr,LOWER_IS_BETTER,ASSET;PORTFOLIO,Synthetic utility calculation examples only; not BCA MEI

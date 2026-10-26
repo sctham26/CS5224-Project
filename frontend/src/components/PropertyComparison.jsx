@@ -12,7 +12,8 @@ import {
   ResponsiveContainer
 } from 'recharts'
 
-const API_BASE_URL = 'http://localhost:8000'
+import { API_BASE_URL } from '../api'
+import { authenticatedFetch } from '../auth'
 
 const METRICS = [
   {
@@ -140,7 +141,7 @@ function PropertyComparison({ entities, entitiesLoading, entitiesError }) {
     async function loadComparison() {
       try {
         const fetchProperty = async (entityId) => {
-          const response = await fetch(
+          const response = await authenticatedFetch(
             `${API_BASE_URL}/analysis/${encodeURIComponent(entityId)}` +
               `?scope=asset&reporting_year=${encodeURIComponent(reportingYear)}`,
             { signal: controller.signal }

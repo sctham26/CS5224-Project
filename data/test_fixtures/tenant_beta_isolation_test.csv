@@ -1,0 +1,3 @@
+tenant_id,visibility,entity_id,postal_code,entity_name,property_type,region,reporting_scope,reporting_year,gross_floor_area_sqm,metric_code,raw_value,raw_unit,standardised_value,canonical_unit,comparability_status,source_reference
+tenant_beta,PRIVATE_TENANT,BETA_SECRET_01,049145,Beta Confidential Treasury Tower,OFFICE,SG_CBD,ASSET,2025,52000.0,ENERGY_INTENSITY_EUI,112.4,kWh/m2/yr,112.4,kWh/m2/yr,COMPARABLE,TENANT_BETA_PRIVATE_UPLOAD
+tenant_beta,PRIVATE_TENANT,BETA_SECRET_01,049145,Beta Confidential Treasury Tower,OFFICE,SG_CBD,ASSET,2025,52000.0,CARBON_INTENSITY,46.3088,kgCO2e/m2/yr,46.3088,kgCO2e/m2/yr,COMPARABLE,TENANT_BETA_PRIVATE_UPLOAD
