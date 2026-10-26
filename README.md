@@ -8,7 +8,7 @@ frontend or AI-service dependencies.
 
 ```powershell
 pip install -r requirements.txt
-python -m pytest -q                  # 103 tests (src/ resolved via pytest pythonpath)
+python -m pytest -q                  # 107 tests (src/ resolved via pytest pythonpath)
 python examples/run_example.py       # building-level benchmark -> examples/output.json
 # HTTP API for the dashboard (team contract output):
 python -m uvicorn api:app --app-dir src --port 8000
@@ -145,7 +145,10 @@ unknown-entity `404`, and `POST /jobs` header validation; exits non-zero on fail
   percentile falls below the per-metric `gap_percentile_threshold`. Missing or
   non-comparable metrics are reported as `gap_type: disclosure_gap` with reason
   `not_disclosed` or `incomparable_unit`. When no peer group can be formed the
-  benchmark is `unavailable` (`insufficient_peers`) and no gap is asserted.
+  benchmark is `unavailable` (`insufficient_peers`) and no gap is asserted: the team
+  contract reports `gap_type: null`, `is_flagged: null` and `benchmark: null` —
+  "not benchmarked", neither "no gap" nor a flagged gap. `"NONE"` is reserved for a
+  comparable metric that met the threshold.
 - **Outputs are decision-support signals**, not financing decisions.
 
 ## Configuration
@@ -208,7 +211,7 @@ team's `docs/metric_dictionary.csv` (PR #1), e.g. `ENERGY_INTENSITY_EUI` / `kWh/
 
 ## Needed from the team
 
-- @Michael: does PR #2 change the analytics request/response shape? Also please confirm the frontend handles`sample_size_n < 5` ,`INCOMPLETE_DATA` and`BOUNDARY_MISMATCH` , and switches its dropdowns to`GET /entities` .
+- @Michael: does PR #2 change the analytics request/response shape? Also please confirm the frontend handles`sample_size_n < 5`（`benchmark`/`gap_type`/`is_flagged` are all `null` — render "peer sample insufficient", never a 0 percentile or "no gap"）,`INCOMPLETE_DATA` and`BOUNDARY_MISMATCH` , and switches its dropdowns to`GET /entities` .
 
 - @Jin — answers received (2026-10-25): authentication is implemented; authorisation is
   still an agreed interface only; `tenant_membership` is managed on the cloud side;

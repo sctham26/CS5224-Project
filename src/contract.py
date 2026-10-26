@@ -201,7 +201,8 @@ def _to_contract(
             converted = conv != 1.0 or code in converted_in or st_in == UNIT_CONVERTED
             status = UNIT_CONVERTED if converted else "COMPARABLE"
             benchmark = None
-            gap_type, flagged, delta = "NONE", False, None
+            # Not benchmarked: neither "no gap" nor a flag (INTERFACES.md: null).
+            gap_type, flagged, delta = None, None, None
             signal = f"{code}: peer cohort unavailable (n < {min_n} after fallback); benchmark not asserted."
         else:
             value, benchmark, delta = None, None, None
