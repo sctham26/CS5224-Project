@@ -30,7 +30,9 @@ python src/import_baseline.py --data data/cleaned/public_esg_baseline.csv --dry-
 | Auth | [auth.py](src/auth.py) | Cognito access-token checks, `sub` → tenant membership |
 | Data source | [datastore.py](src/datastore.py) | Tenant-scoped CSV/PostgreSQL load with a TTL cache |
 | Importer | [import_baseline.py](src/import_baseline.py) | Baseline CSV → `spip_public.observation`, idempotent upsert |
-| HTTP API | [api.py](src/api.py) | FastAPI `GET /entities`, `GET /analysis/{id}`, `POST /analyze`, tenant-scoped CORS |
+| Jobs | [jobs.py](src/jobs.py) | Presigned S3 upload, SQS enqueue, idempotent job store (memory / PostgreSQL) |
+| Worker | [worker.py](src/worker.py) | SQS consume: lease → S3 fetch → analysis → result write, ack only after terminal state; DLQ reconciliation |
+| HTTP API | [api.py](src/api.py) | FastAPI `GET /entities`, `GET /analysis/{id}`, `POST /uploads`, `POST /jobs`, `GET /jobs/{id}`, local `POST /analyze`, tenant-scoped CORS |
 
 ## Security and tenancy
 
@@ -188,9 +190,11 @@ team's `docs/metric_dictionary.csv` (PR #1), e.g. `ENERGY_INTENSITY_EUI` / `kWh/
    peers never mix buildings from different vintages in one cohort.
 3. Certification is loaded but not yet used in peer selection — confirm whether it is a
    peer dimension.
-4. Dashboard/API: the HTTP layer (`src/api.py`) is protected and tenant-scoped, and
-   `GET /entities` supplies the entity/year options. The React dashboard still reads
-   hardcoded entities — switch it to `GET /entities` + `GET /analysis/{entity_id}`.
+4. Dashboard/API: the HTTP layer (`src/api.py`) is protected and tenant-scoped.
+   The React frontend has switched to `AuthGate` + `GET /entities` for entity/year
+   options and `VITE_API_BASE_URL` for the base URL (integration `779b7f0`). One UI item
+   remains: render `benchmark`/`gap_type`/`is_flagged = null` as "peer sample
+   insufficient", not "Not Flagged".
 5. `gap_percentile_threshold: 40` per metric is a placeholder — confirm the agreed gap
    threshold (and whether it differs by metric or portfolio).
 6. `source` provenance is a free-text field — confirm the required granularity
@@ -211,7 +215,12 @@ team's `docs/metric_dictionary.csv` (PR #1), e.g. `ENERGY_INTENSITY_EUI` / `kWh/
 
 ## Needed from the team
 
-- @Michael: does PR #2 change the analytics request/response shape? Also please confirm the frontend handles`sample_size_n < 5`（`benchmark`/`gap_type`/`is_flagged` are all `null` — render "peer sample insufficient", never a 0 percentile or "no gap"）,`INCOMPLETE_DATA` and`BOUNDARY_MISMATCH` , and switches its dropdowns to`GET /entities` .
+- @Michael / @sc: PR #2 merged into `integration` without changing the analytics
+  request/response shape, and the dashboard now uses `AuthGate` + `GET /entities` with
+  `VITE_API_BASE_URL`. One UI gap remains: `sample_size_n < 5` must render
+  `benchmark`/`gap_type`/`is_flagged = null` as "peer sample insufficient" — the deployed
+  bundle still says "Not Flagged" / "No ESG gaps flagged by the analytics engine".
+  `INCOMPLETE_DATA` and `BOUNDARY_MISMATCH` stay under disclosure gaps.
 
 - @Jin — answers received (2026-10-25): authentication is implemented; authorisation is
   still an agreed interface only; `tenant_membership` is managed on the cloud side;
@@ -255,5 +264,14 @@ team's `docs/metric_dictionary.csv` (PR #1), e.g. `ENERGY_INTENSITY_EUI` / `kWh/
   `upload_key` (`tenants/spip-tham/...`) returns `404 {"detail":"upload_key not found"}`
   instead of leaking its existence. Entity-level isolation still needs private rows in a
   second tenant before a `/analysis/{id}` 404 can be demonstrated.
+- **Cloud release of the null-gap contract (2026-10-26)**: backend `e8a9f65` ships as the immutable
+  image `spip-backend@sha256:817e9a4…` shared by the API, worker and operator task definitions;
+  107/107 tests pass inside that Linux image. CloudFront `/api/health` returned 200 and
+  unauthenticated `/api/entities` / `/api/analysis/...` returned 401 when re-checked on 2026-10-26.
+  Authenticated `gap_type: null` behaviour on the deployed API is still unrecorded.
+- **Backend release CI (2026-10-26)**: `.github/workflows/backend-deploy.yml` on `backend-analysis`
+  calls `cloud-config`'s reusable `backend-release.yml@4210aa6` (build+test before credentials →
+  OIDC → ECR push → release → `verify_api.py`). It does not cover `integration` or `main`, and
+  `workflow_dispatch` no-ops because of the job-level `github.ref` guard.
 - **Still open**: the `cognito:groups` decision below (currently a written boundary, no
   group-based code path).
