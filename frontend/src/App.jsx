@@ -157,6 +157,26 @@ function App() {
     (metric) => metric.metric_code === 'ENERGY_INTENSITY_EUI'
   )
 
+  function formatGapStatus(metric) {
+    const flag = metric?.gap_analysis?.is_flagged
+
+    if (flag === null) {
+      return 'Insufficient peer sample'
+    }
+
+    if (flag === undefined) {
+      return 'N/A'
+    }
+
+    return flag ? 'Flagged' : 'Not Flagged'
+  }
+
+  const flaggedGapMetrics = analyticsData?.metrics?.filter(
+    (metric) => metric.gap_analysis?.is_flagged === true
+  ) ?? []
+  const insufficientPeerMetrics = analyticsData?.metrics?.filter(
+    (metric) => metric.gap_analysis?.is_flagged === null
+  ) ?? []
 
   return (
     <div className="app">
@@ -327,11 +347,7 @@ function App() {
                   <div className="metric-card">
                     <p>Performance Gap</p>
                     <h2>
-                      {energyMetric?.gap_analysis?.is_flagged == null
-                        ? 'N/A'
-                        : energyMetric.gap_analysis.is_flagged
-                          ? 'Flagged'
-                          : 'Not Flagged'}
+                      {energyMetric ? formatGapStatus(energyMetric) : 'N/A'}
                     </h2>
                     <span>Based on analytics threshold</span>
                   </div>
@@ -438,28 +454,33 @@ function App() {
                 <div className="info-box dashboard-section">
                   <h3>ESG Gap Analysis</h3>
 
-                  {analyticsData.metrics.some(
-                    (metric) => metric.gap_analysis?.is_flagged
-                  ) ? (
+                  {flaggedGapMetrics.length > 0 ? (
                     <ul>
-                      {analyticsData.metrics
-                        .filter(
-                          (metric) => metric.gap_analysis?.is_flagged
-                        )
-                        .map((metric) => (
-                          <li key={metric.metric_code}>
-                            <strong>
-                              {metric.metric_code.replaceAll('_', ' ')}
-                            </strong>
-                            {' — '}
-                            {metric.gap_analysis?.gap_type
-                              ?.replaceAll('_', ' ')}
-                            <p>
-                              {metric.gap_analysis?.recommendation_signal
-                                ?? 'No recommendation available'}
-                            </p>
-                          </li>
-                        ))}
+                      {flaggedGapMetrics.map((metric) => (
+                        <li key={metric.metric_code}>
+                          <strong>
+                            {metric.metric_code.replaceAll('_', ' ')}
+                          </strong>
+                          {' — '}
+                          {metric.gap_analysis?.gap_type
+                            ?.replaceAll('_', ' ')}
+                          <p>
+                            {metric.gap_analysis?.recommendation_signal
+                              ?? 'No recommendation available'}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : insufficientPeerMetrics.length > 0 ? (
+                    <ul>
+                      {insufficientPeerMetrics.map((metric) => (
+                        <li key={metric.metric_code}>
+                          <strong>
+                            {metric.metric_code.replaceAll('_', ' ')}
+                          </strong>
+                          {' — Insufficient peer sample; no benchmark or gap assessment is available.'}
+                        </li>
+                      ))}
                     </ul>
                   ) : (
                     <p>No ESG gaps flagged by the analytics engine.</p>
