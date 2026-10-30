@@ -97,6 +97,10 @@ function App() {
     )
     const reportingYears = getReportingYears(entity)
 
+    if (analyticsResult?.key === JSON.stringify([selectedEntity, selectedYear])) {
+      return undefined
+    }
+
     if (entitiesLoading || entitiesError || !entity || !reportingYears.includes(selectedYear)) {
       return undefined
     }
@@ -137,11 +141,12 @@ function App() {
 
     return () => controller.abort()
   }, [
+    analyticsResult?.key,
     entities,
     entitiesError,
     entitiesLoading,
     selectedEntity,
-    selectedYear
+    selectedYear,
   ])
 
   function selectDashboardEntity(entityId) {
@@ -473,7 +478,18 @@ function App() {
 
 
         {currentPage === 'upload' && (
-          <CsvUpload />
+          <CsvUpload
+            entities={entities}
+            selectedEntity={selectedEntity}
+            selectedYear={selectedYear}
+            onUploadSuccess={({ entityId, reportingYear, result }) => {
+              const nextKey = JSON.stringify([entityId, String(reportingYear)])
+              setSelectedEntity(entityId)
+              setSelectedYear(String(reportingYear))
+              setAnalyticsResult({ key: nextKey, data: result, error: null })
+              setCurrentPage('dashboard')
+            }}
+          />
         )}
 
         

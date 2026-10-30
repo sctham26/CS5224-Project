@@ -1,5 +1,7 @@
-import { useState } from 'react'
-import { demoUploadHandler } from './csvUploadHandler'
+import { useRef, useState } from 'react'
+import EntitySelector from './EntitySelector'
+import { getDefaultReportingYear, getReportingYears } from './entityUtils'
+import realCsvUploadHandler, { createIdempotencyKey } from './csvUploadHandler'
 
 function formatFileSize(size) {
   if (size < 1024) {
@@ -11,11 +13,59 @@ function formatFileSize(size) {
   })} KB`
 }
 
-function CsvUpload({ uploadHandler = demoUploadHandler }) {
+function resolveUploadTarget(entities, selectedEntity = '', selectedYear = '') {
+  const entity = entities.find((candidate) => candidate.entity_id === selectedEntity) ?? null
+  const availableYears = getReportingYears(entity)
+  const effectiveYear = availableYears.includes(String(selectedYear))
+    ? String(selectedYear)
+    : getDefaultReportingYear(entity)
+
+  return {
+    entity,
+    entityId: entity ? entity.entity_id : '',
+    availableYears,
+    effectiveYear: entity ? effectiveYear : '',
+  }
+}
+
+function CsvUpload({
+  uploadHandler = realCsvUploadHandler,
+  entities = [],
+  selectedEntity = '',
+  selectedYear = '',
+  onUploadSuccess,
+}) {
   const [selectedFile, setSelectedFile] = useState(null)
   const [validationError, setValidationError] = useState('')
   const [status, setStatus] = useState('idle')
   const [statusMessage, setStatusMessage] = useState('')
+  const [uploadEntityId, setUploadEntityId] = useState(() => {
+    if (selectedEntity) return selectedEntity
+    const firstEntity = entities[0]
+    return firstEntity?.entity_id ?? ''
+  })
+  const [uploadYear, setUploadYear] = useState(() => {
+    const initialEntity = entities.find((entity) => entity.entity_id === selectedEntity) ?? entities[0] ?? null
+    const proposedYear = selectedYear && initialEntity
+      ? getReportingYears(initialEntity).includes(String(selectedYear))
+        ? String(selectedYear)
+        : getDefaultReportingYear(initialEntity)
+      : getDefaultReportingYear(initialEntity)
+
+    return proposedYear
+  })
+  const idempotencyKeyRef = useRef('')
+
+  const targetState = resolveUploadTarget(entities, uploadEntityId, uploadYear)
+  const targetEntity = targetState.entity
+  const availableYears = targetState.availableYears
+
+  function handleEntitySelection(nextEntityId) {
+    setUploadEntityId(nextEntityId)
+    const nextEntity = entities.find((entity) => entity.entity_id === nextEntityId) ?? null
+    const nextYear = getDefaultReportingYear(nextEntity)
+    setUploadYear(nextYear)
+  }
 
   function handleFileSelection(event) {
     const file = event.target.files?.[0] ?? null
@@ -44,42 +94,116 @@ function CsvUpload({ uploadHandler = demoUploadHandler }) {
   async function handleSubmit(event) {
     event.preventDefault()
 
-    if (!selectedFile || validationError || status === 'loading') {
+    if (!selectedFile || validationError || status === 'reserving' || status === 'uploading' || status === 'queued' || status === 'processing') {
       return
     }
 
-    setStatus('loading')
-    setStatusMessage('Running the local demo check...')
+    if (!uploadEntityId || !uploadYear || !targetEntity || !availableYears.includes(uploadYear)) {
+      setStatus('failed')
+      setStatusMessage('Choose a valid property and reporting year before uploading your CSV.')
+      return
+    }
+
+    const key = idempotencyKeyRef.current || createIdempotencyKey()
+    idempotencyKeyRef.current = key
 
     try {
-      const result = await uploadHandler(selectedFile)
-      setStatus('success')
+      const result = await uploadHandler(selectedFile, {
+        entityId: uploadEntityId,
+        reportingYear: uploadYear,
+        idempotencyKey: key,
+        onProgress: (nextStatus, message) => {
+          setStatus(nextStatus)
+          setStatusMessage(message)
+        },
+      })
+
+      setStatus('completed')
       setStatusMessage(result.message)
+      onUploadSuccess?.({
+        entityId: uploadEntityId,
+        reportingYear: Number(uploadYear),
+        result: result.result,
+      })
     } catch (error) {
-      setStatus('error')
-      setStatusMessage(
+      const message =
         error instanceof Error
-          ? `The demo could not complete: ${error.message}`
-          : 'The demo could not complete because of an unexpected error.'
-      )
+          ? error.message
+          : 'The upload could not be completed because of an unexpected error.'
+
+      setStatus('failed')
+      setStatusMessage(message)
     }
   }
 
-  const canUpload = Boolean(selectedFile) && !validationError && status !== 'loading'
+  const canUpload =
+    Boolean(selectedFile) &&
+    !validationError &&
+    Boolean(uploadEntityId) &&
+    Boolean(uploadYear) &&
+    Boolean(targetEntity) &&
+    availableYears.includes(uploadYear) &&
+    !['reserving', 'uploading', 'queued', 'processing'].includes(status)
+
+  const buttonLabel =
+    status === 'reserving'
+      ? 'Reserving...'
+      : status === 'uploading'
+        ? 'Uploading...'
+        : status === 'queued'
+          ? 'Queued...'
+          : status === 'processing'
+            ? 'Processing...'
+            : status === 'completed'
+              ? 'Completed'
+              : 'Upload'
 
   return (
     <section>
       <h1>Upload ESG Data</h1>
       <p className="subtitle">
-        Select a non-empty CSV file to check it in the local demo.
+        Select a CSV file and submit it against the selected asset property and reporting year.
       </p>
 
       <div className="info-box csv-upload-card">
         <h3>CSV Upload</h3>
         <p>
-          <strong>Demo mode:</strong> This interface does not send your file to
-          a server. A backend upload API has not been configured.
+          <strong>Target:</strong>{' '}
+          {targetEntity
+            ? `${targetEntity.entity_name || targetEntity.entity_id} (${targetEntity.entity_id}) — ${uploadYear}`
+            : 'No valid property/year selected'}
         </p>
+
+        <div className="upload-target-selectors">
+          <div className="upload-selector-block">
+            <EntitySelector
+              id="upload-selected-entity"
+              label="Property"
+              entities={entities}
+              value={uploadEntityId}
+              onChange={handleEntitySelection}
+              disabled={entities.length === 0}
+              loading={entities.length === 0}
+            />
+          </div>
+
+          <div className="upload-selector-block">
+            <label htmlFor="upload-selected-year">Reporting Year</label>
+            <select
+              id="upload-selected-year"
+              value={uploadYear}
+              onChange={(event) => setUploadYear(event.target.value)}
+              disabled={!targetEntity || availableYears.length === 0}
+            >
+              {availableYears.length === 0 && (
+                <option value="">No reporting years available</option>
+              )}
+              {availableYears.map((year) => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+          </div>
+        </div>
 
         <form onSubmit={handleSubmit}>
           <label className="csv-file-label" htmlFor="csv-file">
@@ -110,15 +234,27 @@ function CsvUpload({ uploadHandler = demoUploadHandler }) {
             </p>
           )}
 
+          {!uploadEntityId && (
+            <p className="csv-status csv-status-error" role="alert">
+              Select a valid property before uploading.
+            </p>
+          )}
+
+          {!uploadYear && (
+            <p className="csv-status csv-status-error" role="alert">
+              Select a reporting year before uploading.
+            </p>
+          )}
+
           <button className="csv-upload-button" type="submit" disabled={!canUpload}>
-            {status === 'loading' ? 'Checking...' : 'Upload'}
+            {buttonLabel}
           </button>
         </form>
 
         {statusMessage && (
           <p
-            className={`csv-status csv-status-${status}`}
-            role={status === 'error' ? 'alert' : 'status'}
+            className={`csv-status csv-status-${status === 'failed' ? 'error' : status === 'completed' ? 'success' : status === 'idle' ? '' : status}`}
+            role={status === 'failed' ? 'alert' : 'status'}
             aria-live="polite"
           >
             {statusMessage}
