@@ -44,6 +44,11 @@ fallback_applied, fallback_reason}`, `metrics[]` with `comparability_status` ∈
 relative_rank, empirical_percentile}`, `gap_analysis{gap_type, is_flagged,
 threshold_percentile, delta_to_peer_median?, recommendation_signal}`.
 
+When `fallback_reason` is `insufficient_peers` (cohort < `min_peer_size`), the affected metric
+returns `benchmark: null`, `gap_type: null`, `is_flagged: null` — "not benchmarked", never
+"no gap" (`"NONE"` is reserved for a comparable metric that meets its threshold). Verified live
+with an authenticated request on 2026-10-30.
+
 ### 1b. `analyse_to_contract(...)` (same output, as a library)
 
 ```python
@@ -234,4 +239,6 @@ metric availability, and unit convertible to canonical. Otherwise it is excluded
   contract, richer provenance).
 - Integration artefacts: team-shaped response from the API; contract example in
   `examples/output.json` (generated from the public baseline).
-- Not integrated: the React dashboard still on hardcoded data, AI assistant.
+- Not integrated: the React dashboard upload still uses the demo handler (real presigned flow
+  is a frontend open item); the insufficient-peer rendering is on `feature/insufficient-peer-display`
+  (`c5dde1a`), awaiting merge. 

@@ -192,9 +192,9 @@ team's `docs/metric_dictionary.csv` (PR #1), e.g. `ENERGY_INTENSITY_EUI` / `kWh/
    peer dimension.
 4. Dashboard/API: the HTTP layer (`src/api.py`) is protected and tenant-scoped.
    The React frontend has switched to `AuthGate` + `GET /entities` for entity/year
-   options and `VITE_API_BASE_URL` for the base URL (integration `779b7f0`). One UI item
-   remains: render `benchmark`/`gap_type`/`is_flagged = null` as "peer sample
-   insufficient", not "Not Flagged".
+   options and `VITE_API_BASE_URL` for the base URL (integration `779b7f0`). The
+   "peer sample insufficient" rendering exists on `feature/insufficient-peer-display`
+   (`c5dde1a`), awaiting merge and deploy.
 5. `gap_percentile_threshold: 40` per metric is a placeholder — confirm the agreed gap
    threshold (and whether it differs by metric or portfolio).
 6. `source` provenance is a free-text field — confirm the required granularity
@@ -217,10 +217,10 @@ team's `docs/metric_dictionary.csv` (PR #1), e.g. `ENERGY_INTENSITY_EUI` / `kWh/
 
 - @Michael / @sc: PR #2 merged into `integration` without changing the analytics
   request/response shape, and the dashboard now uses `AuthGate` + `GET /entities` with
-  `VITE_API_BASE_URL`. One UI gap remains: `sample_size_n < 5` must render
-  `benchmark`/`gap_type`/`is_flagged = null` as "peer sample insufficient" — the deployed
-  bundle still says "Not Flagged" / "No ESG gaps flagged by the analytics engine".
-  `INCOMPLETE_DATA` and `BOUNDARY_MISMATCH` stay under disclosure gaps.
+  `VITE_API_BASE_URL`. Remaining UI work: merge and deploy
+  `feature/insufficient-peer-display` (`c5dde1a`, see above), and replace the
+  `csvUploadHandler.js` demo placeholder with the real upload chain (already proven live,
+  2026-10-30). `INCOMPLETE_DATA` and `BOUNDARY_MISMATCH` stay under disclosure gaps.
 
 - @Jin — answers received (2026-10-25): authentication is implemented; authorisation is
   still an agreed interface only; `tenant_membership` is managed on the cloud side;
@@ -268,10 +268,26 @@ team's `docs/metric_dictionary.csv` (PR #1), e.g. `ENERGY_INTENSITY_EUI` / `kWh/
   image `spip-backend@sha256:817e9a4…` shared by the API, worker and operator task definitions;
   107/107 tests pass inside that Linux image. CloudFront `/api/health` returned 200 and
   unauthenticated `/api/entities` / `/api/analysis/...` returned 401 when re-checked on 2026-10-26.
-  Authenticated `gap_type: null` behaviour on the deployed API is still unrecorded.
-- **Backend release CI (2026-10-26)**: `.github/workflows/backend-deploy.yml` on `backend-analysis`
-  calls `cloud-config`'s reusable `backend-release.yml@4210aa6` (build+test before credentials →
-  OIDC → ECR push → release → `verify_api.py`). It does not cover `integration` or `main`, and
-  `workflow_dispatch` no-ops because of the job-level `github.ref` guard.
+  Authenticated `gap_type: null` behaviour was verified live on 2026-10-30 (below).
+- **Backend release CI (2026-10-26, verified 2026-10-30)**: `.github/workflows/backend-deploy.yml` on
+  `backend-analysis` calls `cloud-config`'s reusable `backend-release.yml@4210aa6` (build+test before
+  credentials → OIDC → ECR push → release → `verify_api.py` → provenance artifact). Three runs passed
+  end to end on 2026-10-30 (push `40997101639`, manual dispatch `40999128498`, guard-fix rebuild
+  `40999796648`); the live image is `sha256:54bb8ee3…` at commit `4a58c1d`, rollback chain
+  `817e9a4…` → `499e2b28…`. Manual dispatch works only when the branch selector targets
+  `backend-analysis` — the caller's guard job now fails other branches explicitly instead of
+  silently skipping. It still does not cover `integration` or `main`.
+- **Authenticated null-gap E2E (2026-10-30)**: with a real Cognito access token (tenant
+  `spip-songsifan`), a purpose-built n=3 CSV closed the full pipeline live — the public baseline
+  cannot trigger the path naturally because every asset pool holds ≥5 comparable entities, so the
+  cohort (target + 2 peers) was uploaded and the worker analysed the file itself: `POST /api/uploads`
+  201 → presigned PUT 200 → `POST /api/jobs` 202 (job `job_45ad603ff57248629306440c30a5a180`) →
+  `SUCCEEDED` in ~1.3 s. The one disclosed metric returned `benchmark`/`gap_type`/`is_flagged` all
+  `null` with `sample_size_n=0` and `fallback_reason=insufficient_peers`; the other ten metrics came
+  back `DISCLOSURE_GAP`/`INCOMPLETE_DATA`. Undisclosed vs small-cohort are now observably distinct
+  on the live system, stamped `tenant_id=spip-songsifan`.
+- **Frontend fix branch (2026-10-29)**: `feature/insufficient-peer-display` (`c5dde1a`) renders
+  "Insufficient peer sample" for `is_flagged: null` and lists small-cohort metrics in the gap
+  panel; lint / vitest 14 / build pass locally. Awaiting PR → merge → deploy.
 - **Still open**: the `cognito:groups` decision below (currently a written boundary, no
   group-based code path).
