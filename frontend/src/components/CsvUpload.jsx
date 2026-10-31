@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import EntitySelector from './EntitySelector'
 import { getDefaultReportingYear, getReportingYears } from './entityUtils'
 import realCsvUploadHandler, { createIdempotencyKey } from './csvUploadHandler'
@@ -31,8 +31,11 @@ function resolveUploadTarget(entities, selectedEntity = '', selectedYear = '') {
 function CsvUpload({
   uploadHandler = realCsvUploadHandler,
   entities = [],
+  entitiesLoading = false,
+  entitiesError = null,
   selectedEntity = '',
   selectedYear = '',
+  onRetryLoadEntities,
   onUploadSuccess,
 }) {
   const [selectedFile, setSelectedFile] = useState(null)
@@ -55,6 +58,31 @@ function CsvUpload({
     return proposedYear
   })
   const idempotencyKeyRef = useRef('')
+
+  useEffect(() => {
+    if (selectedFile || ['reserving', 'uploading', 'queued', 'processing'].includes(status)) {
+      return
+    }
+
+    const nextEntity = entities.find((entity) => entity.entity_id === selectedEntity) ?? null
+    if (!nextEntity) {
+      return
+    }
+
+    const nextYear = selectedYear && getReportingYears(nextEntity).includes(String(selectedYear))
+      ? String(selectedYear)
+      : getDefaultReportingYear(nextEntity)
+
+    // This sync is intentionally limited to external property selection updates from the parent,
+    // and is skipped when a file is already chosen or an upload is active.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setUploadEntityId((currentEntityId) => (
+      currentEntityId === nextEntity.entity_id ? currentEntityId : nextEntity.entity_id
+    ))
+    setUploadYear((currentYear) => (
+      currentYear === nextYear ? currentYear : nextYear
+    ))
+  }, [entities, selectedEntity, selectedFile, selectedYear, status])
 
   const targetState = resolveUploadTarget(entities, uploadEntityId, uploadYear)
   const targetEntity = targetState.entity
@@ -167,45 +195,73 @@ function CsvUpload({
 
       <div className="info-box csv-upload-card">
         <h3>CSV Upload</h3>
-        <p>
-          <strong>Target:</strong>{' '}
-          {targetEntity
-            ? `${targetEntity.entity_name || targetEntity.entity_id} (${targetEntity.entity_id}) — ${uploadYear}`
-            : 'No valid property/year selected'}
-        </p>
 
-        <div className="upload-target-selectors">
-          <div className="upload-selector-block">
-            <EntitySelector
-              id="upload-selected-entity"
-              label="Property"
-              entities={entities}
-              value={uploadEntityId}
-              onChange={handleEntitySelection}
-              disabled={entities.length === 0}
-              loading={entities.length === 0}
-            />
+        {entitiesLoading && (
+          <div className="info-box" role="status">
+            Loading properties...
           </div>
+        )}
 
-          <div className="upload-selector-block">
-            <label htmlFor="upload-selected-year">Reporting Year</label>
-            <select
-              id="upload-selected-year"
-              value={uploadYear}
-              onChange={(event) => setUploadYear(event.target.value)}
-              disabled={!targetEntity || availableYears.length === 0}
-            >
-              {availableYears.length === 0 && (
-                <option value="">No reporting years available</option>
-              )}
-              {availableYears.map((year) => (
-                <option key={year} value={year}>{year}</option>
-              ))}
-            </select>
+        {!entitiesLoading && entitiesError && (
+          <div className="info-box">
+            <p className="api-error">{entitiesError.message}</p>
+            {entitiesError.type === 'auth' ? (
+              <p>Please sign in and retry.</p>
+            ) : (
+              <p>Check that the Python Analytics API is running on port 8000.</p>
+            )}
+            {onRetryLoadEntities && (
+              <button type="button" onClick={onRetryLoadEntities}>
+                Retry
+              </button>
+            )}
           </div>
-        </div>
+        )}
 
-        <form onSubmit={handleSubmit}>
+        {!entitiesLoading && !entitiesError && (
+          <>
+            <p>
+              <strong>Target:</strong>{' '}
+              {targetEntity
+                ? `${targetEntity.entity_name || targetEntity.entity_id} (${targetEntity.entity_id}) — ${uploadYear}`
+                : 'No valid property/year selected'}
+            </p>
+
+            <div className="upload-target-selectors">
+              <div className="upload-selector-block">
+                <EntitySelector
+                  id="upload-selected-entity"
+                  label="Property"
+                  entities={entities}
+                  value={uploadEntityId}
+                  onChange={handleEntitySelection}
+                  disabled={entities.length === 0}
+                  loading={entities.length === 0}
+                />
+              </div>
+
+              <div className="upload-selector-block">
+                <label htmlFor="upload-selected-year">Reporting Year</label>
+                <select
+                  id="upload-selected-year"
+                  value={uploadYear}
+                  onChange={(event) => setUploadYear(event.target.value)}
+                  disabled={!targetEntity || availableYears.length === 0}
+                >
+                  {availableYears.length === 0 && (
+                    <option value="">No reporting years available</option>
+                  )}
+                  {availableYears.map((year) => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </>
+        )}
+
+        {!entitiesLoading && !entitiesError && (
+          <form onSubmit={handleSubmit}>
           <label className="csv-file-label" htmlFor="csv-file">
             Choose a CSV file
           </label>
@@ -249,9 +305,10 @@ function CsvUpload({
           <button className="csv-upload-button" type="submit" disabled={!canUpload}>
             {buttonLabel}
           </button>
-        </form>
+          </form>
+        )}
 
-        {statusMessage && (
+        {!entitiesLoading && !entitiesError && statusMessage && (
           <p
             className={`csv-status csv-status-${status === 'failed' ? 'error' : status === 'completed' ? 'success' : status === 'idle' ? '' : status}`}
             role={status === 'failed' ? 'alert' : 'status'}
