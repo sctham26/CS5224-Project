@@ -21,6 +21,8 @@ The public `/api` prefix is a browser routing convention; the backend does not n
 
 The synchronous development `/analyze` endpoint is not exposed by the gateway. Application request bodies and response JSON are owned by the backend; use the pinned [backend interface](https://github.com/sctham26/CS5224-Project/blob/e8a9f65d377bf6d5b1ac59f5c58afbfdc63d6971/INTERFACES.md) and `src/api.py`/`src/jobs.py`. The previous cloud contract v0.1 was a proposal, not proof that the backend implemented its `upload_id`/operation envelope. The current backend uses `upload_key` and its own job request fields.
 
+**2026-11-01 frontend status:** the error-handling feature branch now implements authenticated API requests and the real presigned upload/job flow, but remains unmerged into integration. Insufficient-peer rendering is a separate branch. [Frontend release instructions](FRONTEND_DEPLOYMENT.md) explains check-only runs and explicit integration publication. The older checklist below describes the required final behavior, not a claim that no feature implementation exists.
+
 ## Frontend team's required changes
 
 1. Production requests must use `/api`; `localhost:8000` is local development only. Setting a Vite variable has no effect unless the frontend reads it.
