@@ -71,6 +71,32 @@ npm run dev                          # http://localhost:5173
 In development the frontend calls `http://localhost:8000`; production builds call `/api`.
 Both come from `frontend/src/api.js`, overridable with `VITE_API_BASE_URL`.
 
+## Prepare the public data
+
+After installing the Python requirements above, run from the repository root:
+
+```bash
+python prepare_data.py
+```
+
+The script reads the local BCA files, curated SGX values, grid factors and
+`docs/metric_dictionary.csv`. It rebuilds `data/cleaned/public_esg_baseline.csv`
+(12,765 BCA observations and two SGX portfolio disclosures) and checks the format
+of `data/samples/private_esg_sample.csv`. Raw sources and samples are unchanged.
+Rebuilding the CSV does not update data already imported into the database.
+
+- `data/samples/private_esg_sample.csv` contains 34 synthetic records in the public
+  dataset's 20-column format. `utility_calculation_examples.csv` in the same folder
+  contains three calculation examples with expected results. These are test data,
+  not public benchmark peers.
+- The two SGX disclosures have different measurement boundaries from BCA buildings
+  and are marked `BOUNDARY_MISMATCH`. Do not pool them with building-level EUI.
+- Derived carbon values are electricity CO2 estimates; the 2025 grid factor is
+  provisional. Public water peers and verified 2030 targets are not supplied.
+
+Sources, cleaning rules, reproduction checks and the older upload-fixture formats
+are explained in [docs/data_handoff.md](docs/data_handoff.md).
+
 ## Test
 
 ```bash
@@ -120,7 +146,9 @@ CloudFront strips the `/api` prefix; backend routes are unprefixed (`SPIP_API_PR
 | `GET /jobs/{job_id}` | Job status and result | Token + tenant |
 | `POST /analyze` | Synchronous local-only upload (not exposed in the cloud) | Local only |
 
-Response shapes: [INTERFACES.md](INTERFACES.md) and `schemas/analytics_output_contract.json`.
+Current response details: [INTERFACES.md](INTERFACES.md).
+`schemas/analytics_output_contract.json` is an earlier draft; align it with the
+current API before using it to validate responses, including insufficient-peer results.
 
 ### Security and tenancy
 
