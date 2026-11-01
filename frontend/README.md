@@ -12,7 +12,7 @@ live AWS end-to-end upload verification.
 | Area | Status |
 |---|---|
 | Dashboard and Property Comparison | Implemented; shared asset-level entity catalogue and property/year selection flow |
-| Frontend–Analytics API integration | Implemented and previously validated against a separately running FastAPI API on `http://localhost:8000` for local dashboard/comparison data loading |
+| Frontend–Analytics API integration | Implemented; production uses `/api`, while local dashboard/comparison data loading was previously validated against a separately running FastAPI API on `http://localhost:8000` during development |
 | Entity catalogue error handling | Implemented; loading, empty, auth, network/API states and `Retry` are surfaced in the UI |
 | CSV upload workflow | Implemented in the frontend client code and Vitest tests: `/uploads` reservation, presigned S3 PUT, `/jobs` submission with `Idempotency-Key`, polling and result handoff |
 | Authentication flow | Implemented with Cognito/OIDC and `authenticatedFetch`; demo mode exists for local development |
