@@ -30,7 +30,9 @@ python src/import_baseline.py --data data/cleaned/public_esg_baseline.csv --dry-
 | Auth | [auth.py](../src/auth.py) | Cognito access-token checks, `sub` → tenant membership |
 | Data source | [datastore.py](../src/datastore.py) | Tenant-scoped CSV/PostgreSQL load with a TTL cache |
 | Importer | [import_baseline.py](../src/import_baseline.py) | Baseline CSV → `spip_public.observation`, idempotent upsert |
-| HTTP API | [api.py](../src/api.py) | FastAPI `GET /entities`, `GET /analysis/{id}`, `POST /analyze`, tenant-scoped CORS |
+| Jobs | [jobs.py](../src/jobs.py) | Presigned S3 upload, SQS enqueue, idempotent job store (memory / PostgreSQL) |
+| Worker | [worker.py](../src/worker.py) | SQS consume: lease → S3 fetch → analysis → result write, ack only after terminal state; DLQ reconciliation |
+| HTTP API | [api.py](../src/api.py) | FastAPI `GET /entities`, `GET /analysis/{id}`, `POST /uploads`, `POST /jobs`, `GET /jobs/{id}`, local `POST /analyze`, tenant-scoped CORS |
 
 ## Security and tenancy
 
@@ -188,9 +190,12 @@ team's `docs/metric_dictionary.csv` (PR #1), e.g. `ENERGY_INTENSITY_EUI` / `kWh/
    peers never mix buildings from different vintages in one cohort.
 3. Certification is loaded but not yet used in peer selection — confirm whether it is a
    peer dimension.
-4. Dashboard/API: the HTTP layer (`src/api.py`) is protected and tenant-scoped, and
-   `GET /entities` supplies the entity/year options. The React dashboard still reads
-   hardcoded entities — switch it to `GET /entities` + `GET /analysis/{entity_id}`.
+4. Dashboard/API: the HTTP layer (`src/api.py`) is protected and tenant-scoped.
+   The React frontend has switched to `AuthGate` + `GET /entities` for entity/year
+   options and `VITE_API_BASE_URL` for the base URL (integration `779b7f0`). The
+   "peer sample insufficient" rendering is on `feature/insufficient-peer-display`
+   (`c5dde1a`) and the real upload chain on `feature/real-csv-upload` (`e554763`);
+   both await merge into `integration`.
 5. `gap_percentile_threshold: 40` per metric is a placeholder — confirm the agreed gap
    threshold (and whether it differs by metric or portfolio).
 6. `source` provenance is a free-text field — confirm the required granularity
@@ -211,7 +216,11 @@ team's `docs/metric_dictionary.csv` (PR #1), e.g. `ENERGY_INTENSITY_EUI` / `kWh/
 
 ## Needed from the team
 
-- @Michael: does PR #2 change the analytics request/response shape? Also please confirm the frontend handles`sample_size_n < 5`（`benchmark`/`gap_type`/`is_flagged` are all `null` — render "peer sample insufficient", never a 0 percentile or "no gap"）,`INCOMPLETE_DATA` and`BOUNDARY_MISMATCH` , and switches its dropdowns to`GET /entities` .
+- @Michael / @sc: PR #2 merged into `integration` without changing the analytics
+  request/response shape, and the dashboard now uses `AuthGate` + `GET /entities` with
+  `VITE_API_BASE_URL`. Remaining UI work: merge `feature/insufficient-peer-display`
+  (`c5dde1a`) and `feature/real-csv-upload` (`e554763`) into `integration`, then deploy.
+  `INCOMPLETE_DATA` and `BOUNDARY_MISMATCH` stay under disclosure gaps.
 
 - @Jin — answers received (2026-10-25): authentication is implemented; authorisation is
   still an agreed interface only; `tenant_membership` is managed on the cloud side;
@@ -239,21 +248,37 @@ team's `docs/metric_dictionary.csv` (PR #1), e.g. `ENERGY_INTENSITY_EUI` / `kWh/
   (real `SG_...` IDs, years 2022–2025) and `GET /api/analysis/SG_228218_LATEST_6?scope=
   asset&reporting_year=2024` returned 200 — proving prefix stripping, JWKS signature
   validation, `sub` → tenant resolution and the PostgreSQL read path in one call.
-- **Upload path defect found by live acceptance (2026-10-25, fixed)**: the presigned PUT was
-  generated with Signature V2, and the tenant bucket is SSE-KMS, so S3 returned
-  `400 InvalidArgument — Requests specifying Server Side Encryption with AWS KMS managed
-  keys require AWS Signature Version 4`. [jobs.py](../src/jobs.py#L351-L366) now builds the
-  presign client with `s3v4` + virtual addressing, and
-  [test_presign_sigv4.py](../tests/test_presign_sigv4.py) locks it. **This needs an image
-  rebuild before `/uploads` can succeed in the sandbox**; `POST /uploads` itself already
-  returns 201 and writes the expected `tenants/<tenant>/uploads/<uuid>.csv` key.
-- **Upload → worker → result closed (2026-10-25)**: `POST /api/uploads` 201 → presigned `PUT`
-  200 (URL now carries `X-Amz-Algorithm=AWS4-HMAC-SHA256`) → `POST /api/jobs` 202
-  (`QUEUED`) → `GET /api/jobs/{id}` `SUCCEEDED` in ~2 s with the full analysis payload
-  inline (11 metrics, `peer_cohort` OFFICE/SG n=239, 3 benchmarks, 8 disclosure gaps).
+- **Presigned PUT (2026-10-25)**: the tenant bucket is SSE-KMS, so the URL must use
+  Signature V4; [jobs.py](../src/jobs.py#L351-L366) builds the presign client with `s3v4` +
+  virtual addressing, locked by [test_presign_sigv4.py](../tests/test_presign_sigv4.py).
 - **Tenant isolation proven at HTTP level (2026-10-25)**: submitting another tenant's
   `upload_key` (`tenants/spip-tham/...`) returns `404 {"detail":"upload_key not found"}`
   instead of leaking its existence. Entity-level isolation still needs private rows in a
   second tenant before a `/analysis/{id}` 404 can be demonstrated.
-- **Still open**: the `cognito:groups` decision below (currently a written boundary, no
-  group-based code path).
+- **Cloud release of the null-gap contract (2026-10-26)**: backend `e8a9f65` ships as the immutable
+  image `spip-backend@sha256:817e9a4…` shared by the API, worker and operator task definitions;
+  107/107 tests pass inside that Linux image. CloudFront `/api/health` returned 200 and
+  unauthenticated `/api/entities` / `/api/analysis/...` returned 401 when re-checked on 2026-10-26.
+  Authenticated `gap_type: null` behaviour was verified live on 2026-10-30 (below).
+- **Backend release CI (2026-10-26, verified 2026-10-30)**: `.github/workflows/backend-deploy.yml` on
+  `backend-analysis` calls `cloud-config`'s reusable `backend-release.yml@4210aa6` (build+test before
+  credentials → OIDC → ECR push → release → `verify_api.py` → provenance artifact). Repeated
+  push and manual-dispatch runs passed end to end; the live image is `sha256:b608bb66…` at
+  commit `c76e547`, rollback chain `54bb8ee3…` → `499e2b28…` → `817e9a4…`. Manual dispatch
+  works only when the branch selector targets `backend-analysis` — the caller's guard job
+  fails other branches explicitly instead of silently skipping. It still does not cover
+  `integration` or `main`.
+- **Authenticated null-gap E2E (2026-10-30)**: with a real Cognito access token (tenant
+  `spip-songsifan`), a purpose-built n=3 CSV closed the full pipeline live — the public baseline
+  cannot trigger the path naturally because every asset pool holds ≥5 comparable entities, so the
+  cohort (target + 2 peers) was uploaded and the worker analysed the file itself: `POST /api/uploads`
+  201 → presigned PUT 200 → `POST /api/jobs` 202 → `SUCCEEDED` in ~1.3 s. The one disclosed metric
+  returned `benchmark`/`gap_type`/`is_flagged` all `null` with `sample_size_n=0` and
+  `fallback_reason=insufficient_peers`; the other ten metrics came back
+  `DISCLOSURE_GAP`/`INCOMPLETE_DATA`. Undisclosed vs small-cohort are observably distinct on the
+  live system.
+- **Frontend branches awaiting merge (2026-10-29/30)**: `feature/insufficient-peer-display`
+  (`c5dde1a`) renders "Insufficient peer sample" for `is_flagged: null` and lists small-cohort
+  metrics in the gap panel (vitest 14, lint, build pass); `feature/real-csv-upload`
+  (`e554763`) replaces the `csvUploadHandler.js` demo placeholder with the real chain
+  (npm test 20 passed, lint and build clean). Merge into `integration`, then deploy.
