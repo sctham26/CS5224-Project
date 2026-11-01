@@ -3,3 +3,12 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
+.DS_Store
+node_modules/
+.env
+.env.*
+!.env.example
+cdk-outputs*.json
+/.venv/
+__pycache__/
+*.py[cod]

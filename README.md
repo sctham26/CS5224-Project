@@ -193,9 +193,9 @@ team's `docs/metric_dictionary.csv` (PR #1), e.g. `ENERGY_INTENSITY_EUI` / `kWh/
 4. Dashboard/API: the HTTP layer (`src/api.py`) is protected and tenant-scoped.
    The React frontend has switched to `AuthGate` + `GET /entities` for entity/year
    options and `VITE_API_BASE_URL` for the base URL (integration `779b7f0`). The
-   "peer sample insufficient" rendering is on `feature/insufficient-peer-display`
-   (`c5dde1a`) and the real upload chain on `feature/real-csv-upload` (`e554763`);
-   both await merge into `integration`.
+   "peer sample insufficient" rendering (`feature/insufficient-peer-display`, `c5dde1a`)
+   and the real upload chain (`feature/real-csv-upload`, `e554763`) merged into
+   `integration` via `217a184` and are live on the test site at `66dd626` (2026-11-01).
 5. `gap_percentile_threshold: 40` per metric is a placeholder — confirm the agreed gap
    threshold (and whether it differs by metric or portfolio).
 6. `source` provenance is a free-text field — confirm the required granularity
@@ -215,12 +215,6 @@ team's `docs/metric_dictionary.csv` (PR #1), e.g. `ENERGY_INTENSITY_EUI` / `kWh/
   are excluded by the adapter, so they surface as disclosure gaps, not comparisons.
 
 ## Needed from the team
-
-- @Michael / @sc: PR #2 merged into `integration` without changing the analytics
-  request/response shape, and the dashboard now uses `AuthGate` + `GET /entities` with
-  `VITE_API_BASE_URL`. Remaining UI work: merge `feature/insufficient-peer-display`
-  (`c5dde1a`) and `feature/real-csv-upload` (`e554763`) into `integration`, then deploy.
-  `INCOMPLETE_DATA` and `BOUNDARY_MISMATCH` stay under disclosure gaps.
 
 - @Jin — answers received (2026-10-25): authentication is implemented; authorisation is
   still an agreed interface only; `tenant_membership` is managed on the cloud side;
@@ -277,8 +271,15 @@ team's `docs/metric_dictionary.csv` (PR #1), e.g. `ENERGY_INTENSITY_EUI` / `kWh/
   `fallback_reason=insufficient_peers`; the other ten metrics came back
   `DISCLOSURE_GAP`/`INCOMPLETE_DATA`. Undisclosed vs small-cohort are observably distinct on the
   live system.
-- **Frontend branches awaiting merge (2026-10-29/30)**: `feature/insufficient-peer-display`
-  (`c5dde1a`) renders "Insufficient peer sample" for `is_flagged: null` and lists small-cohort
-  metrics in the gap panel (vitest 14, lint, build pass); `feature/real-csv-upload`
-  (`e554763`) replaces the `csvUploadHandler.js` demo placeholder with the real chain
-  (npm test 20 passed, lint and build clean). Merge into `integration`, then deploy.
+- **Frontend merged and deployed (2026-11-01)**: `integration` consolidated backend `e6eb5c0`,
+  cloud-config `83813f7` and `feature/frontend-error-handling` `217a184` (which carries both
+  `feature/insufficient-peer-display` and `feature/real-csv-upload`) at `66dd626`; frontend CI
+  run `#27` passed (26 tests, lint, build) and the build was published to the shared test site by
+  run `#30` (`release.json` commit `66dd626`, bundle `index-CygRjUnp.js`). Verified after deploy:
+  `/api/health` 200, `/api/entities` 401 unauthenticated, and the bundle carries both
+  "Insufficient peer sample" and the `Idempotency-Key` upload path.
+- **Frontend deploy triggers (as configured)**: pushes to `integration` run checks and the build
+  only; the deploy job is gated to `push` on `main`, or a manual `workflow_dispatch` from
+  `cloud-config` (or `main`) with `frontend_source_ref: integration` and `deploy: true`.
+  A push to `integration` therefore never publishes by itself — publishing needs either the
+  `integration → main` merge or an explicit dispatch.
