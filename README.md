@@ -166,6 +166,7 @@ Detailed per-component status: [docs/CLOUD_HANDOFF.md](docs/CLOUD_HANDOFF.md) an
 | [docs/AUTH_CONTRACT.md](docs/AUTH_CONTRACT.md) | Cognito login and frontend/backend auth contract |
 | [docs/FRONTEND_DEPLOYMENT.md](docs/FRONTEND_DEPLOYMENT.md) | Frontend hosting, CI/CD and recovery |
 | [docs/BACKEND_DEPLOYMENT.md](docs/BACKEND_DEPLOYMENT.md) | Backend CDK stacks and database bootstrap |
+| [docs/BACKEND_RELEASE.md](docs/BACKEND_RELEASE.md) | Releasing backend application changes through GitHub Actions |
 | [docs/BACKEND_CLOUD_CONTRACT.md](docs/BACKEND_CLOUD_CONTRACT.md) | Earlier backend–cloud interface proposal |
 | [docs/CLOUD_HANDOFF.md](docs/CLOUD_HANDOFF.md) | Dated cloud handoff and branch integration notes |
 | [docs/PROJECT_GUIDE.md](docs/PROJECT_GUIDE.md) | Project and architecture walkthrough |

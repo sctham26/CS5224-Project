@@ -4,6 +4,8 @@ Deployment plan for `cloud-config` (Alex and Auxane)
 
 **Status:** frontend hosting, Cognito and the sandbox backend/API infrastructure are deployed. The backend migrations and public baseline import have run; real-user tenant acceptance and the active frontend branch’s API/auth integration remain pending. See [current API integration](API_INTEGRATION.md) and the dated [team handoff](CLOUD_HANDOFF.md).
 
+Backend application changes can be released through [GitHub Actions](BACKEND_RELEASE.md); database/schema and infrastructure changes remain separate cloud operations.
+
 ## 1. Before provisioning
 
 - Confirm the AWS account, region, available permissions, lease expiry, remaining budget, and existing resources.

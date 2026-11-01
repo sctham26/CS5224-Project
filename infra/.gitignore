@@ -12,3 +12,4 @@ backend-outputs.json
 operations-outputs.json
 runtime-outputs.json
 backend-image.json
+release-outputs.json

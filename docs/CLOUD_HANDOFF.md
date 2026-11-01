@@ -8,7 +8,13 @@ Prepared 2026-10-23 for the SPIP team. Source branch: `cloud-config`; PR target:
 
 **Backend image refresh (2026-10-25):** backend commit `60f12ae` fixes S3 presigned uploads to use SigV4 for the KMS-encrypted tenant bucket. The cloud release pins the rebuilt immutable image; see [image refresh evidence and rollback](API_INTEGRATION.md#backend-image-refresh--sigv4-upload-fix-2026-10-25). This source update needs no database migration or membership change.
 
+**Latest backend release (2026-10-26):** backend `e8a9f65` fixes insufficient-peer results to return null benchmark/gap/flag values. The rebuilt image and CI source pin are recorded in the [API integration guide](API_INTEGRATION.md). No schema or membership change is required.
+
+**Frontend integration update (2026-11-01):** [Frontend CI and test publication](FRONTEND_DEPLOYMENT.md) now supports selecting integration or the frontend feature branches for check-only builds, and explicit integration publication to the existing shared site. Error-handling includes real CSV upload; insufficient-peer-display still needs a separate frontend-owned merge. Integration also lacks the newer cloud backend-release machinery. No application branch, local-dev CORS or live site is changed by this update.
+
 ## 1. What is delivered
+
+**Automatic backend releases (2026-10-26):** the backend branch's authorized workflow entrypoint now calls a SHA-pinned cloud workflow. It tests, publishes and updates only API/worker images through CloudFormation parameters. See [team instructions, permissions and rollback](BACKEND_RELEASE.md). This supersedes the dated statements below that backend publishing is always operator-run; database migrations and privileged operator tasks remain cloud-owned.
 
 | Component | Implemented | Verification / deployment |
 | --- | --- | --- |

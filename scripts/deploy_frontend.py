@@ -56,4 +56,4 @@ if __name__ == "__main__":
     parser.add_argument("--dist", default="frontend/dist")
     args = parser.parse_args()
     deploy(args.dist, os.environ["FRONTEND_BUCKET_NAME"], os.environ["CLOUDFRONT_DISTRIBUTION_ID"],
-           os.environ["AWS_ACCOUNT_ID"], os.environ["GITHUB_SHA"])
+           os.environ["AWS_ACCOUNT_ID"], os.environ.get("FRONTEND_SOURCE_SHA") or os.environ["GITHUB_SHA"])
