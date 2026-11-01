@@ -10,7 +10,7 @@ Prepared 2026-10-23 for the SPIP team. Source branch: `cloud-config`; PR target:
 
 **Latest backend release (2026-10-26):** backend `e8a9f65` fixes insufficient-peer results to return null benchmark/gap/flag values. The rebuilt image and CI source pin are recorded in the [API integration guide](API_INTEGRATION.md). No schema or membership change is required.
 
-**Frontend integration update (2026-11-01):** [Frontend CI and test publication](FRONTEND_DEPLOYMENT.md) now supports selecting integration or the frontend feature branches for check-only builds, and explicit integration publication to the existing shared site. Error-handling includes real CSV upload; insufficient-peer-display still needs a separate frontend-owned merge. Integration also lacks the newer cloud backend-release machinery. No application branch, local-dev CORS or live site is changed by this update.
+**Frontend integration update (2026-11-01):** integration `66dd626` now includes the latest cloud release machinery, backend updates, insufficient-peer display and the real CSV upload/error-handling frontend. [Combined integration CI](https://github.com/sctham26/CS5224-Project/actions/runs/41273174001) passed; deployment was skipped. The workflow's explicit cloud unittest module list is synchronized back to cloud-config to avoid loading backend tests through broad discovery. [Frontend release instructions](FRONTEND_DEPLOYMENT.md) covers the source snapshot, check-only builds and explicit publication to the shared site. No application branch, local-dev CORS or live site is changed by this synchronization.
 
 ## 1. What is delivered
 
