@@ -305,9 +305,13 @@ function PropertyComparison({ entities, entitiesLoading, entitiesError }) {
       {entitiesError && (
         <div className="info-box">
           <p className="api-error">
-            Unable to retrieve properties: {entitiesError}
+            {entitiesError.message}
           </p>
-          <p>Check that the Analytics API is running on port 8000.</p>
+          {entitiesError.type === 'auth' ? (
+            <p>Please sign in and retry.</p>
+          ) : (
+            <p>Check that the Analytics API is running on port 8000.</p>
+          )}
         </div>
       )}
 

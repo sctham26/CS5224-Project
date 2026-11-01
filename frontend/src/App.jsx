@@ -5,10 +5,10 @@ import {
   getDefaultReportingYear,
   getReportingYears
 } from './components/entityUtils'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import './App.css'
 
-import { API_BASE_URL } from './api'
+import { API_BASE_URL, classifyApiError } from './api'
 import { authenticatedFetch } from './auth'
 
 function App() {
@@ -21,57 +21,65 @@ function App() {
   const [entitiesError, setEntitiesError] = useState(null)
   const [selectedEntity, setSelectedEntity] = useState('')
   const [selectedYear, setSelectedYear] = useState('')
+  const loadEntitiesRef = useRef(null)
 
-  useEffect(() => {
+  const loadEntities = useCallback(async () => {
     const controller = new AbortController()
+    loadEntitiesRef.current = controller
 
-    async function loadEntities() {
-      try {
-        setEntitiesLoading(true)
-        setEntitiesError(null)
+    try {
+      setEntitiesLoading(true)
+      setEntitiesError(null)
 
-        const response = await authenticatedFetch(`${API_BASE_URL}/entities?scope=asset`, {
-          signal: controller.signal
-        })
+      const response = await authenticatedFetch(`${API_BASE_URL}/entities?scope=asset`, {
+        signal: controller.signal
+      })
 
-        if (!response.ok) {
-          throw new Error(`Entities API returned HTTP ${response.status}`)
-        }
+      if (!response.ok) {
+        throw new Error(`Entities API returned HTTP ${response.status}`)
+      }
 
-        const data = await response.json()
-        if (
-          !Array.isArray(data?.entities) ||
-          data.entities.some(
-            (entity) =>
-              !entity ||
-              typeof entity.entity_id !== 'string' ||
-              entity.entity_id.trim() === ''
-          )
-        ) {
-          throw new Error('Entities API returned an invalid entity list')
-        }
+      const data = await response.json()
+      if (
+        !Array.isArray(data?.entities) ||
+        data.entities.some(
+          (entity) =>
+            !entity ||
+            typeof entity.entity_id !== 'string' ||
+            entity.entity_id.trim() === ''
+        )
+      ) {
+        throw new Error('Entities API returned an invalid entity list')
+      }
 
-        if (!controller.signal.aborted) {
-          setEntities(data.entities)
-          const firstEntity = data.entities[0]
-          setSelectedEntity(firstEntity?.entity_id ?? '')
-          setSelectedYear(getDefaultReportingYear(firstEntity))
-        }
-      } catch (error) {
-        if (error.name !== 'AbortError') {
-          setEntitiesError(error.message)
-        }
-      } finally {
-        if (!controller.signal.aborted) {
-          setEntitiesLoading(false)
-        }
+      if (!controller.signal.aborted) {
+        setEntities(data.entities)
+        const firstEntity = data.entities[0]
+        setSelectedEntity(firstEntity?.entity_id ?? '')
+        setSelectedYear(getDefaultReportingYear(firstEntity))
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        const { type, message } = classifyApiError(error, 'Unable to retrieve properties.')
+        setEntitiesError({ type, message })
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        setEntitiesLoading(false)
       }
     }
+  }, [])
 
+  useEffect(() => {
+    // This initial fetch intentionally starts from the effect lifecycle; the request is
+    // aborted on cleanup and all state updates are isolated behind the async loader.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadEntities()
 
-    return () => controller.abort()
-  }, [])
+    return () => {
+      loadEntitiesRef.current?.abort()
+    }
+  }, [loadEntities])
 
   // Retrieve ESG analytics data from the Python Analytics API
   const [analyticsResult, setAnalyticsResult] = useState(null)
@@ -96,6 +104,10 @@ function App() {
       (candidate) => candidate.entity_id === selectedEntity
     )
     const reportingYears = getReportingYears(entity)
+
+    if (analyticsResult?.key === JSON.stringify([selectedEntity, selectedYear])) {
+      return undefined
+    }
 
     if (entitiesLoading || entitiesError || !entity || !reportingYears.includes(selectedYear)) {
       return undefined
@@ -137,11 +149,12 @@ function App() {
 
     return () => controller.abort()
   }, [
+    analyticsResult?.key,
     entities,
     entitiesError,
     entitiesLoading,
     selectedEntity,
-    selectedYear
+    selectedYear,
   ])
 
   function selectDashboardEntity(entityId) {
@@ -267,9 +280,13 @@ function App() {
             {entitiesError && (
               <div className="info-box">
                 <p className="api-error">
-                  Unable to retrieve properties: {entitiesError}
+                  {entitiesError.message}
                 </p>
-                <p>Please check that the Python Analytics API is running on port 8000.</p>
+                {entitiesError.type === 'auth' ? (
+                  <p>Please sign in and retry.</p>
+                ) : (
+                  <p>Please check that the Python Analytics API is running on port 8000.</p>
+                )}
               </div>
             )}
 
@@ -494,7 +511,21 @@ function App() {
 
 
         {currentPage === 'upload' && (
-          <CsvUpload />
+          <CsvUpload
+            entities={entities}
+            entitiesLoading={entitiesLoading}
+            entitiesError={entitiesError}
+            selectedEntity={selectedEntity}
+            selectedYear={selectedYear}
+            onRetryLoadEntities={loadEntities}
+            onUploadSuccess={({ entityId, reportingYear, result }) => {
+              const nextKey = JSON.stringify([entityId, String(reportingYear)])
+              setSelectedEntity(entityId)
+              setSelectedYear(String(reportingYear))
+              setAnalyticsResult({ key: nextKey, data: result, error: null })
+              setCurrentPage('dashboard')
+            }}
+          />
         )}
 
         
