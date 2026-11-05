@@ -121,6 +121,86 @@ describe('realCsvUploadHandler', () => {
     ).rejects.toThrow(/timed out/i)
   })
 
+  it('prefers the backend 503 detail when the response includes a plain-text message', async () => {
+    const apiFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      text: async () => JSON.stringify({ detail: 'Upload workers are restarting for maintenance.' }),
+    })
+
+    await expect(
+      realCsvUploadHandler(makeFile(), {
+        entityId: 'A001',
+        reportingYear: 2024,
+        idempotencyKey: '503-detail-key',
+        apiFetch,
+        fetcher: vi.fn().mockResolvedValue({ ok: true }),
+        baseUrl: '/api',
+      })
+    ).rejects.toThrow('Upload workers are restarting for maintenance.')
+  })
+
+  it('prefers the backend 503 detail when the detail is a structured JSON object', async () => {
+    const apiFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      text: async () =>
+        JSON.stringify({
+          detail: {
+            message: 'Service queue is draining for maintenance',
+            code: 'BACKEND_MAINTENANCE',
+          },
+        }),
+    })
+
+    await expect(
+      realCsvUploadHandler(makeFile(), {
+        entityId: 'A001',
+        reportingYear: 2024,
+        idempotencyKey: '503-structured-key',
+        apiFetch,
+        fetcher: vi.fn().mockResolvedValue({ ok: true }),
+        baseUrl: '/api',
+      })
+    ).rejects.toThrow('Service queue is draining for maintenance')
+  })
+
+  it('falls back to a generic 503 message when the backend detail is missing or malformed', async () => {
+    const missingDetail = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      text: async () => JSON.stringify({ detail: null }),
+    })
+
+    await expect(
+      realCsvUploadHandler(makeFile(), {
+        entityId: 'A001',
+        reportingYear: 2024,
+        idempotencyKey: '503-missing-key',
+        apiFetch: missingDetail,
+        fetcher: vi.fn().mockResolvedValue({ ok: true }),
+        baseUrl: '/api',
+      })
+    ).rejects.toThrow(/The backend upload services are not configured or are temporarily unavailable\./i)
+
+    const malformedDetail = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      text: async () => JSON.stringify({ detail: { stack: 'Traceback (most recent call last):\n...' } }),
+    })
+
+    await expect(
+      realCsvUploadHandler(makeFile(), {
+        entityId: 'A001',
+        reportingYear: 2024,
+        idempotencyKey: '503-malformed-key',
+        apiFetch: malformedDetail,
+        fetcher: vi.fn().mockResolvedValue({ ok: true }),
+        baseUrl: '/api',
+      })
+    ).rejects.toThrow(/The backend upload services are not configured or are temporarily unavailable\./i)
+  })
+
   it('turns a 401 response into an auth error', async () => {
     const apiFetch = vi.fn().mockResolvedValue({
       ok: false,

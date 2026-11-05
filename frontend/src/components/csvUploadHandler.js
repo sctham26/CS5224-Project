@@ -10,6 +10,55 @@ export function createIdempotencyKey(prefix = 'spip-upload') {
   return `${prefix}-${suffix}`
 }
 
+function normalizeErrorDetail(value) {
+  if (typeof value === 'string') {
+    const normalized = value.trim()
+    if (!normalized) {
+      return ''
+    }
+
+    if (/<[a-z!]/i.test(normalized) || /traceback|stack trace|stacktrace|exception/i.test(normalized)) {
+      return ''
+    }
+
+    return normalized.replace(/\s+/g, ' ').slice(0, 500)
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const normalized = normalizeErrorDetail(item)
+      if (normalized) {
+        return normalized
+      }
+    }
+
+    return ''
+  }
+
+  if (value && typeof value === 'object') {
+    const preferredKeys = ['message', 'detail', 'error', 'title', 'description', 'reason']
+    for (const key of preferredKeys) {
+      const normalized = normalizeErrorDetail(value[key])
+      if (normalized) {
+        return normalized
+      }
+    }
+
+    for (const [key, nestedValue] of Object.entries(value)) {
+      if (/stack|traceback|html|body/.test(key.toLowerCase())) {
+        continue
+      }
+
+      const normalized = normalizeErrorDetail(nestedValue)
+      if (normalized) {
+        return normalized
+      }
+    }
+  }
+
+  return ''
+}
+
 function getJsonErrorMessage(response, fallbackMessage) {
   if (!response || typeof response.status !== 'number') {
     return fallbackMessage
@@ -25,29 +74,34 @@ function getJsonErrorMessage(response, fallbackMessage) {
     case 409:
       return 'This upload request conflicts with an earlier idempotent retry. Reuse the same Idempotency-Key and request body.'
     case 503:
-      return 'The backend upload services are not configured or are temporarily unavailable.'
+      return fallbackMessage || 'The backend upload services are not configured or are temporarily unavailable.'
     default:
       return fallbackMessage
   }
 }
 
 async function readErrorDetails(response, fallbackMessage) {
-  let detail = fallbackMessage
+  let detail = ''
 
   try {
     const text = await response.text()
     if (text) {
       const parsed = JSON.parse(text)
       const candidate = parsed?.detail || parsed?.error || parsed?.message
-      if (typeof candidate === 'string' && candidate.trim()) {
-        detail = candidate
+      const normalized = normalizeErrorDetail(candidate)
+      if (normalized) {
+        detail = normalized
       }
     }
   } catch {
     // Response body may not be JSON; keep the status-aware fallback.
   }
 
-  return getJsonErrorMessage(response, detail)
+  if (response.status === 503 && !detail) {
+    return 'The backend upload services are not configured or are temporarily unavailable.'
+  }
+
+  return getJsonErrorMessage(response, detail || fallbackMessage)
 }
 
 export async function realCsvUploadHandler(
