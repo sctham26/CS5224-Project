@@ -15,7 +15,15 @@ import os
 import sys
 import tempfile
 
-from contract import ContractInputError, EntityNotFound, analyse_to_contract
+import pandas as pd
+
+from contract import (
+    ContractInputError,
+    EntityNotFound,
+    analyse_dataframe_to_contract,
+)
+from datastore import CsvDataSource, DataSource, build_data_source
+from import_baseline import REQUIRED_COLUMNS, ImportError_, prepare_rows, load as load_observations
 from jobs import (
     FAILED,
     SUCCEEDED,
@@ -57,6 +65,101 @@ def parse_envelope(body: str | dict) -> dict:
     return data
 
 
+#: Same natural key as the importer's upsert (migrations/004): a re-upload
+#: replaces the stored observation for that entity, year, scope and metric.
+_UPSERT_KEY = ("entity_id", "reporting_year", "reporting_scope", "metric_code")
+
+_datasource: DataSource | None = None
+
+
+def _data_source() -> DataSource:
+    """Built once per process so the TTL cache survives across jobs."""
+    global _datasource
+    if _datasource is None:
+        _datasource = build_data_source()
+    return _datasource
+
+
+def stored_frame(tenant_id: str):
+    """Rows the tenant may already see, or ``None`` when nothing is stored here.
+
+    The worker also runs where no database is configured; benchmarking against the
+    upload alone then keeps the job working instead of failing it outright.
+    """
+    source = _data_source()
+    if isinstance(source, CsvDataSource) and not source.path.exists():
+        return None
+    try:
+        return source.load(tenant_id)
+    except Exception:
+        log.exception("stored dataset unavailable; benchmarking the upload alone")
+        return None
+
+
+def _row_key(frame: pd.DataFrame) -> pd.Series:
+    """Key as strings, with numeric years normalised (2024 vs 2024.0)."""
+    year = pd.to_numeric(frame["reporting_year"], errors="coerce").astype("Int64").astype(str)
+    return (
+        frame["entity_id"].astype(str)
+        + "\x00"
+        + year
+        + "\x00"
+        + frame["reporting_scope"].astype(str).str.lower()
+        + "\x00"
+        + frame["metric_code"].astype(str)
+    )
+
+
+def merge_upload(stored, uploaded: pd.DataFrame) -> pd.DataFrame:
+    """Stored rows (peer cohort) plus uploaded rows (target); the upload wins.
+
+    Overlap is removed from the stored frame on the importer's upsert key, so a
+    re-uploaded building corrects its own observation instead of appearing twice.
+    """
+    if stored is None or stored.empty:
+        return uploaded
+    if not set(_UPSERT_KEY) <= set(uploaded.columns):
+        # Engine-format upload; its columns are not the stored long table's.
+        log.warning("upload is not in the team long format; stored rows not merged")
+        return uploaded
+    keep = ~_row_key(stored).isin(set(_row_key(uploaded)))
+    return pd.concat([stored[keep], uploaded], ignore_index=True)
+
+
+def _has_target(uploaded: pd.DataFrame, entity_id: str, reporting_year: int | None) -> bool:
+    """The uploaded file must actually contain the record being analysed."""
+    if "entity_id" not in uploaded.columns:
+        return False
+    hit = uploaded["entity_id"].astype(str) == entity_id
+    column = "reporting_year" if "reporting_year" in uploaded.columns else "reporting_period"
+    if reporting_year is not None and column in uploaded.columns:
+        hit &= pd.to_numeric(uploaded[column], errors="coerce") == reporting_year
+    return bool(hit.any())
+
+
+def persist_upload(uploaded: pd.DataFrame, tenant_id: str) -> int:
+    """Write the upload into the tenant's own observations (opt-in).
+
+    RLS keeps these rows visible only to that tenant, so this makes a one-off
+    analysis re-runnable and gives the tenant a multi-year trail; it does not add
+    anything to the shared cohort.
+    """
+    if os.environ.get("SPIP_PERSIST_UPLOADS", "") != "1":
+        return 0
+    url = os.environ.get("SPIP_TENANT_DATABASE_URL")
+    if not url:
+        log.warning("SPIP_PERSIST_UPLOADS is on but SPIP_TENANT_DATABASE_URL is unset")
+        return 0
+    if not set(REQUIRED_COLUMNS) <= set(uploaded.columns):
+        log.warning("upload is not in the team long format; not persisted")
+        return 0
+    try:
+        rows = prepare_rows(uploaded, tenant_id=tenant_id)
+    except ImportError_ as exc:
+        raise ContractInputError(f"cannot persist upload: {exc}") from None
+    return load_observations(rows, url, tenant_id=tenant_id)
+
+
 def process_job(
     envelope: dict,
     store: JobStore,
@@ -76,15 +179,32 @@ def process_job(
         with os.fdopen(fd, "wb") as fh:
             fh.write(body)
 
-        result = analyse_to_contract(
-            data_path=path,
+        try:
+            uploaded = pd.read_csv(path)
+        except (pd.errors.EmptyDataError, pd.errors.ParserError, UnicodeDecodeError) as exc:
+            raise ContractInputError(f"unreadable CSV: {exc}") from None
+
+        year = envelope.get("reporting_year")
+        if not _has_target(uploaded, envelope["entity_id"], year):
+            raise EntityNotFound(
+                f"entity {envelope['entity_id']} is not in the uploaded file"
+                + (f" for {year}" if year is not None else "")
+            )
+
+        # The upload supplies the target; the stored dataset supplies the peers,
+        # so a single building's file can still be benchmarked.
+        result = analyse_dataframe_to_contract(
+            df=merge_upload(stored_frame(envelope["tenant_id"]), uploaded),
             entity_id=envelope["entity_id"],
             metrics_path=METRICS,
             peer_rules_path=RULES,
-            reporting_year=envelope.get("reporting_year"),
+            reporting_year=year,
             scope=envelope.get("scope", "asset"),
             tenant_id=envelope["tenant_id"],
         )
+
+        # Before the result write, so SUCCEEDED means the rows are also stored.
+        persist_upload(uploaded, envelope["tenant_id"])
         # Durable result object first, then the terminal row: a crash between the
         # two only causes a retry, never a job that reports SUCCEEDED without data.
         uploader.write_json(

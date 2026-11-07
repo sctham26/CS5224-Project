@@ -8,7 +8,7 @@ frontend or AI-service dependencies.
 
 ```powershell
 pip install -r requirements.txt
-python -m pytest -q                  # 107 tests (src/ resolved via pytest pythonpath)
+python -m pytest -q                  # 111 tests (src/ resolved via pytest pythonpath)
 python examples/run_example.py       # building-level benchmark -> examples/output.json
 # HTTP API for the dashboard (team contract output):
 python -m uvicorn api:app --app-dir src --port 8000
@@ -83,10 +83,13 @@ Runtime settings use the names the `cloud-config` deployment injects:
 | `SPIP_PUBLIC_DATABASE_URL` / `SPIP_TENANT_DATABASE_URL` | PostgreSQL sources (built by `cloud-config/backend_cloud/entrypoint.py`); absent → local CSV |
 | `SPIP_TENANT_DATA_BUCKET` | Tenant S3 bucket for uploads and job results |
 | `SPIP_JOB_QUEUE_URL` / `SPIP_JOB_DLQ_URL` | Ingestion queue and dead-letter queue |
+| `SPIP_PERSIST_UPLOADS` | `1` upserts each upload into the tenant's own observations after analysis (requires an `INSERT`/`UPDATE` grant); default off, and RLS keeps those rows private to that tenant |
 | `SPIP_UPLOAD_URL_TTL_SECONDS` | Presigned PUT lifetime (default 300) |
 | `SPIP_JOB_LEASE_SECONDS` | Worker lease on a claimed job (should match queue visibility) |
 | `SPIP_DATA` | CSV path for the local source (defaults to the public baseline) |
 | `SPIP_CACHE_TTL_SECONDS` | Cache lifetime for a tenant's loaded records |
+| `SPIP_ANALYSIS_CACHE_TTL_SECONDS` | Lifetime of a computed report in memory (default 60, `0` disables); a datasource reload always misses |
+| `SPIP_ANALYSIS_CACHE_MAX` | Maximum cached reports per process (default 128, oldest evicted first) |
 | `SPIP_ALLOWED_ORIGINS` | Allowed browser origins for CORS |
 | `SPIP_API_PREFIX` | Insurance switch: keep business routes unprefixed (default) or under `/api`; `/health` is always unprefixed |
 
@@ -103,16 +106,72 @@ Routes match the `cloud-config` gateway: `POST /uploads`, `POST /jobs`, `GET /jo
 3. States are `PENDING → QUEUED → RUNNING → SUCCEEDED | FAILED` and never move backwards;
    `ingestion_job` enforces this with a trigger as well as the store.
 4. The worker (`python -m worker`, the deployment's `worker_command`) claims each job with
-   a lease, analyses the uploaded CSV and writes the result to
-   `tenants/<tenant>/jobs/<job>/result.json` before marking it terminal. It acknowledges
-   SQS only after that durable write, so transient failures stay retryable and duplicate
-   deliveries cannot re-run a finished job.
+   a lease, merges the uploaded rows with the tenant-visible stored dataset (public
+   baseline plus the tenant's own rows) and writes the result to
+   `tenants/<tenant>/jobs/<job>/result.json` before marking it terminal. The upload
+   supplies the target; the stored data supplies the peer cohort, so a file holding one
+   building is still benchmarked against the full baseline. Overlapping rows are resolved
+   on the importer's upsert key, so a re-uploaded building replaces its stored
+   observation instead of appearing twice. It acknowledges SQS only after that durable
+   write, so transient failures stay retryable and duplicate deliveries cannot re-run a
+   finished job.
 5. Unreadable uploads fail asynchronously (`FAILED` + error), not as an HTTP error on the
    earlier `202`. `python -m worker --reconcile-dlq` turns exhausted messages into visible
    `FAILED` jobs instead of leaving them `RUNNING` forever.
+6. With `SPIP_PERSIST_UPLOADS=1` the worker also upserts the uploaded rows into the
+   tenant's own observations, on the importer's upsert key and stamped with the
+   authenticated tenant — a CSV cannot claim another tenant. RLS keeps those rows invisible
+   to everyone else, so this makes a report re-runnable and gives the tenant a multi-year
+   trail; it does **not** add rows to another tenant's cohort.
 
 Locally (no bucket/queue configured) these routes answer `503`; `POST /analyze` remains a
 synchronous local convenience and is not a production upload path.
+
+## Input format (prototype scope)
+
+An upload must already be in the team's long CSV. The prototype does not translate a
+customer's own export: headers, units and identifiers are assumed to match the contract,
+and a file that does not is rejected as `FAILED` at the job's terminal state (the HTTP
+call still returns `202`). Nothing is coerced or guessed.
+
+Required columns — the rest of the 20-column header may be empty: `entity_id`,
+`reporting_scope`, `reporting_year`, `metric_code`, `standardised_value`,
+`canonical_unit`, `comparability_status`, `property_type`, `region`. `metric_code` must
+be one of the 11 declared in [config/metrics.yaml](config/metrics.yaml),
+`comparability_status` must be one of `COMPARABLE`, `UNIT_CONVERTED`,
+`BOUNDARY_MISMATCH`, `ANOMALY_FLAGGED`, and an empty `standardised_value` means "not
+disclosed", which is not the same as `0`.
+
+A downloadable template fixes the expected shape, but it does not remove the manual
+work: a real company file with different headers, units and entity keys still has to be
+reshaped before upload. Automatic column mapping — header synonyms with a human
+confirmation step, unit inference and a proposed conversion, unmapped-metric reporting,
+fuzzy matching on `postal_code` / `entity_name` — is future work. The honest claim is
+"one supported format, prepared by the user", not universal ingestion.
+
+## Scaling
+
+The deployment is one API service and one worker behind one queue, sized for the
+prototype. Nothing below is implemented; it describes the growth path and what each step
+costs.
+
+| Component | Growth trigger | Lever | Trade-off |
+|---|---|---|---|
+| API | ALB p95 latency, 5xx rate, CPU | raise the ECS desired count — stateless, so this scales roughly linearly | the database connection pool saturates before CPU does, and each instance warms its own TTL cache |
+| Worker | `ApproximateNumberOfMessagesVisible` sustained above a threshold, or job latency | more worker tasks; receive a batch instead of `MaxNumberOfMessages=1` | SQS polling and database writes are paid per unit of throughput; the queue already absorbs ingest bursts, so spikes should not force API scaling |
+| Data source | observation count, tenant count, `/analysis` p95 | move peer selection into SQL (indexed on scope/region/property_type/reporting_year/metric_code), or precompute per-cohort aggregates | precomputation trades staleness and storage for latency, and new data or a new tenant invalidates the snapshot |
+| Cache | frames and reports are cached per process, so each instance recomputes its own and a restart drops them | shared cache (ElastiCache), or S3-backed report objects | one more service to run and pay for |
+
+The expensive component is not the API tier. It is `PostgresDataSource`: every worker job
+and every API cache miss loads the public baseline plus the tenant's rows as one frame and
+hands all of it to the engine. That is fine at 12,767 observations and is the first
+thing to change at millions. The worker is capped less by compute than by one message per
+poll; the queue is the shock absorber, so an ingest spike costs queue latency rather than
+API availability.
+
+Cost is dominated by ECS task hours, the database instance and storage, S3 storage and
+requests, and CloudFront; the queue is the cheapest line item and should not drive
+design.
 
 ## Interfaces
 
@@ -229,8 +288,15 @@ team's `docs/metric_dictionary.csv` (PR #1), e.g. `ENERGY_INTENSITY_EUI` / `kWh/
 
 - @Auxane / @Jin: worker `worker_command` = `python src/worker.py` (or `python -m worker`
   with `src` on `PYTHONPATH`); keep queue visibility aligned with
-  `SPIP_JOB_LEASE_SECONDS`. DLQ reconciliation can run as a scheduled ECS task with
-  `python src/worker.py --reconcile-dlq`.
+  `SPIP_JOB_LEASE_SECONDS`. The worker now benchmarks uploads against the stored
+  dataset, so it needs `SPIP_PUBLIC_DATABASE_URL` (and `SPIP_TENANT_DATABASE_URL` for
+  tenant rows) in its task definition — without it the job still runs, but a
+  single-entity upload has no peer cohort. For write-back (`SPIP_PERSIST_UPLOADS=1`)
+  the tenant role also needs `INSERT`/`UPDATE` on `observation` — it currently has
+  `SELECT` only ([002_tenant.sql](migrations/002_tenant.sql)); no policy change is
+  required, because the `ALL` policy's `USING` clause doubles as the `INSERT` check.
+  DLQ reconciliation can run as a scheduled
+  ECS task with `python src/worker.py --reconcile-dlq`.
 
 - **Resolved (2026-10-25)**: CloudFront keeps the browser-facing `/api` prefix and strips
   it, the gateway routes are unprefixed, and ECS passes `SPIP_API_PREFIX=""`. The API
@@ -265,7 +331,9 @@ team's `docs/metric_dictionary.csv` (PR #1), e.g. `ENERGY_INTENSITY_EUI` / `kWh/
 - **Authenticated null-gap E2E (2026-10-30)**: with a real Cognito access token (tenant
   `spip-songsifan`), a purpose-built n=3 CSV closed the full pipeline live — the public baseline
   cannot trigger the path naturally because every asset pool holds ≥5 comparable entities, so the
-  cohort (target + 2 peers) was uploaded and the worker analysed the file itself: `POST /api/uploads`
+  cohort (target + 2 peers) was uploaded and the worker analysed the file itself (since
+  2026-11-07 it merges stored data, so a single-entity upload now gets the full cohort):
+  `POST /api/uploads`
   201 → presigned PUT 200 → `POST /api/jobs` 202 → `SUCCEEDED` in ~1.3 s. The one disclosed metric
   returned `benchmark`/`gap_type`/`is_flagged` all `null` with `sample_size_n=0` and
   `fallback_reason=insufficient_peers`; the other ten metrics came back

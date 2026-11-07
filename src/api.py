@@ -19,6 +19,9 @@ import hashlib
 import json
 import os
 import tempfile
+import threading
+import time
+from collections import OrderedDict
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -106,6 +109,11 @@ def get_principal(request: Request) -> Principal:
         ) from None
 
 
+#: Repeat reads of one report are served from memory. ``0`` disables the cache.
+ANALYSIS_TTL = float(os.environ.get("SPIP_ANALYSIS_CACHE_TTL_SECONDS", 60))
+ANALYSIS_MAX = int(os.environ.get("SPIP_ANALYSIS_CACHE_MAX", 128))
+
+
 def _analyse(df, entity_id: str, reporting_year: int | None, scope: str, tenant: str) -> dict:
     try:
         return analyse_dataframe_to_contract(
@@ -121,6 +129,37 @@ def _analyse(df, entity_id: str, reporting_year: int | None, scope: str, tenant:
         raise HTTPException(status_code=404, detail=str(exc)) from None
     except ContractInputError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
+
+
+_analysis_lock = threading.Lock()
+_analysis_cache: OrderedDict[tuple, tuple[float, object, dict]] = OrderedDict()
+
+
+def _cached_analysis(df, entity_id: str, reporting_year: int | None, scope: str, tenant: str) -> dict:
+    """Serve a repeated report from memory; recompute on a fresh data frame.
+
+    The key holds ``id(df)`` and the entry pins the frame, so its id cannot be
+    reused while the entry lives; a datasource reload hands back a new object and
+    therefore misses.
+    """
+    if ANALYSIS_TTL <= 0:
+        return _analyse(df, entity_id, reporting_year, scope, tenant)
+
+    key = (id(df), tenant, scope, entity_id, reporting_year)
+    now = time.monotonic()
+    with _analysis_lock:
+        hit = _analysis_cache.get(key)
+        if hit is not None and hit[0] > now:
+            _analysis_cache.move_to_end(key)
+            return hit[2]
+        _analysis_cache.pop(key, None)
+
+    result = _analyse(df, entity_id, reporting_year, scope, tenant)
+    with _analysis_lock:
+        _analysis_cache[key] = (now + ANALYSIS_TTL, df, result)
+        while len(_analysis_cache) > ANALYSIS_MAX:
+            _analysis_cache.popitem(last=False)
+    return result
 
 
 @app.get("/health")
@@ -192,7 +231,9 @@ def get_analysis(
 ) -> JSONResponse:
     _scope(scope)
     df = _datasource.load(principal.tenant_id)
-    return JSONResponse(_analyse(df, entity_id, reporting_year, scope, principal.tenant_id))
+    return JSONResponse(
+        _cached_analysis(df, entity_id, reporting_year, scope, principal.tenant_id)
+    )
 
 
 @app.post(f"{PREFIX}/analyze")
