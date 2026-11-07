@@ -8,7 +8,7 @@ frontend or AI-service dependencies.
 
 ```powershell
 pip install -r requirements.txt
-python -m pytest -q                  # 111 tests (src/ resolved via pytest pythonpath)
+python -m pytest -q                  # 116 tests (src/ resolved via pytest pythonpath)
 python examples/run_example.py       # building-level benchmark -> examples/output.json
 # HTTP API for the dashboard (team contract output):
 python -m uvicorn api:app --app-dir src --port 8000
@@ -142,12 +142,12 @@ be one of the 11 declared in [config/metrics.yaml](config/metrics.yaml),
 `BOUNDARY_MISMATCH`, `ANOMALY_FLAGGED`, and an empty `standardised_value` means "not
 disclosed", which is not the same as `0`.
 
-A downloadable template fixes the expected shape, but it does not remove the manual
-work: a real company file with different headers, units and entity keys still has to be
-reshaped before upload. Automatic column mapping — header synonyms with a human
-confirmation step, unit inference and a proposed conversion, unmapped-metric reporting,
-fuzzy matching on `postal_code` / `entity_name` — is future work. The honest claim is
-"one supported format, prepared by the user", not universal ingestion.
+A downloadable template fixes the expected shape, and the frontend now maps a customer
+export onto it in the browser: header synonyms with a human confirmation step
+(`feature/csv-column-mapping`, 34 frontend tests, not yet merged into `integration`).
+Unit inference, unmapped-metric reporting and fuzzy `postal_code` / `entity_name`
+matching remain future work, so the honest claim is "one supported format with assisted
+mapping", not universal ingestion.
 
 ## Scaling
 
@@ -351,3 +351,11 @@ team's `docs/metric_dictionary.csv` (PR #1), e.g. `ENERGY_INTENSITY_EUI` / `kWh/
   `cloud-config` (or `main`) with `frontend_source_ref: integration` and `deploy: true`.
   A push to `integration` therefore never publishes by itself — publishing needs either the
   `integration → main` merge or an explicit dispatch.
+- **Source synced, image status to confirm (2026-11-07)**: the merge, write-back and cache
+  work above is on `backend-analysis` at `db3f8c5`, and a push there runs
+  `.github/workflows/backend-deploy.yml` (build + release). The last digest recorded here
+  is `sha256:b608bb66…` (`c76e547`), so check the Actions run before claiming the new code
+  is live. Frontend: the 503 detail passthrough is in `integration` at `32a448c`, column
+  mapping sits on `feature/csv-column-mapping` (`b80627e`, 34 frontend tests green, not
+  merged), and the manual correctness workbook is `evaluation/correctness_SG.xlsx`
+  (`6b5cfca`). Page-level browser E2E is still absent from the repository.
