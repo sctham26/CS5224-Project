@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import EntitySelector from './EntitySelector'
+import { buildDefaultColumnMap, generateStandardisedCsv, makeMappedFile, parseCsvText, SPIP_REQUIRED_FIELDS } from './csvColumnMapper'
 import { getDefaultReportingYear, getReportingYears } from './entityUtils'
 import realCsvUploadHandler, { createIdempotencyKey } from './csvUploadHandler'
 
@@ -42,6 +43,16 @@ function CsvUpload({
   const [validationError, setValidationError] = useState('')
   const [status, setStatus] = useState('idle')
   const [statusMessage, setStatusMessage] = useState('')
+  const [mappingState, setMappingState] = useState({
+    open: false,
+    headers: [],
+    sourceRows: [],
+    mapping: {},
+    previewRows: [],
+    generatedCsv: '',
+    generatedFile: null,
+    error: '',
+  })
   const [uploadEntityId, setUploadEntityId] = useState(() => {
     if (selectedEntity) return selectedEntity
     const firstEntity = entities[0]
@@ -73,9 +84,6 @@ function CsvUpload({
       ? String(selectedYear)
       : getDefaultReportingYear(nextEntity)
 
-    // This sync is intentionally limited to external property selection updates from the parent,
-    // and is skipped when a file is already chosen or an upload is active.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setUploadEntityId((currentEntityId) => (
       currentEntityId === nextEntity.entity_id ? currentEntityId : nextEntity.entity_id
     ))
@@ -100,6 +108,16 @@ function CsvUpload({
     setSelectedFile(file)
     setStatus('idle')
     setStatusMessage('')
+    setMappingState({
+      open: false,
+      headers: [],
+      sourceRows: [],
+      mapping: {},
+      previewRows: [],
+      generatedCsv: '',
+      generatedFile: null,
+      error: '',
+    })
 
     if (!file) {
       setValidationError('')
@@ -117,6 +135,141 @@ function CsvUpload({
     }
 
     setValidationError('')
+  }
+
+  async function handleOpenMapping() {
+    if (!selectedFile) {
+      return
+    }
+
+    try {
+      const csvText = await selectedFile.text()
+      const { headers, rows, parseErrors } = parseCsvText(csvText)
+
+      if (!headers.length) {
+        setMappingState({
+          open: true,
+          headers: [],
+          sourceRows: [],
+          mapping: {},
+          previewRows: [],
+          generatedCsv: '',
+          generatedFile: null,
+          error: 'The selected file does not contain a CSV header row.',
+        })
+        return
+      }
+
+      if (parseErrors.length > 0 && parseErrors.some((error) => error.code === 'TooFewFields' || error.code === 'TooManyFields')) {
+        setMappingState({
+          open: true,
+          headers,
+          sourceRows: rows,
+          mapping: buildDefaultColumnMap(headers, {
+            entityId: uploadEntityId,
+            reportingYear: uploadYear,
+            selectedEntity: targetEntity,
+            scope: 'ASSET',
+          }),
+          previewRows: rows.slice(0, 5),
+          generatedCsv: '',
+          generatedFile: null,
+          error: 'The CSV has parse issues. Review the mapped fields before upload.',
+        })
+        return
+      }
+
+      setMappingState({
+        open: true,
+        headers,
+        sourceRows: rows,
+        mapping: buildDefaultColumnMap(headers, {
+          entityId: uploadEntityId,
+          reportingYear: uploadYear,
+          selectedEntity: targetEntity,
+          scope: 'ASSET',
+        }),
+        previewRows: rows.slice(0, 5),
+        generatedCsv: '',
+        generatedFile: null,
+        error: '',
+      })
+    } catch (error) {
+      setMappingState({
+        open: true,
+        headers: [],
+        sourceRows: [],
+        mapping: {},
+        previewRows: [],
+        generatedCsv: '',
+        generatedFile: null,
+        error: error instanceof Error ? error.message : 'Unable to read the selected CSV file.',
+      })
+    }
+  }
+
+  function updateMappingSelection(field, header) {
+    setMappingState((current) => {
+      const nextMapping = { ...current.mapping }
+      const fixedValue = field === 'entity_id'
+        ? uploadEntityId
+        : field === 'reporting_year'
+          ? uploadYear
+          : field === 'reporting_scope'
+            ? 'ASSET'
+            : field === 'property_type' && targetEntity?.property_type
+              ? targetEntity.property_type
+              : field === 'region' && targetEntity?.region
+                ? targetEntity.region
+                : ''
+
+      if (header) {
+        nextMapping[field] = { type: 'source', header }
+      } else {
+        nextMapping[field] = { type: 'fixed', value: fixedValue }
+      }
+
+      return { ...current, mapping: nextMapping }
+    })
+  }
+
+  function handleGenerateMappedCsv() {
+    try {
+      const result = generateStandardisedCsv(mappingState.sourceRows, mappingState.mapping, {
+        entityId: uploadEntityId,
+        reportingYear: uploadYear,
+        scope: 'ASSET',
+        selectedEntity: targetEntity,
+      })
+
+      setMappingState((current) => ({
+        ...current,
+        previewRows: result.previewRows,
+        generatedCsv: result.csvText,
+        generatedFile: makeMappedFile(result.csvText, selectedFile?.name || 'mapped-upload.csv'),
+        error: '',
+      }))
+    } catch (error) {
+      setMappingState((current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : 'The mapped CSV could not be validated.',
+      }))
+    }
+  }
+
+  function handleUseMappedCsv() {
+    if (!mappingState.generatedFile) {
+      return
+    }
+
+    setSelectedFile(mappingState.generatedFile)
+    setValidationError('')
+    setStatus('idle')
+    setStatusMessage('Mapped CSV ready for upload.')
+    setMappingState((current) => ({
+      ...current,
+      open: false,
+    }))
   }
 
   async function handleSubmit(event) {
@@ -185,6 +338,17 @@ function CsvUpload({
             : status === 'completed'
               ? 'Completed'
               : 'Upload'
+
+  const sourcePreview =
+    mappingState.headers.length > 0
+      ? `${mappingState.headers.join(',')}\n${mappingState.previewRows
+          .slice(0, 5)
+          .map((row) => Object.values(row).join(','))
+          .join('\n')}`
+      : ''
+
+  const mappedPreview =
+    mappingState.generatedCsv ? mappingState.generatedCsv.split('\n').slice(0, 7).join('\n') : ''
 
   return (
     <section>
@@ -281,6 +445,98 @@ function CsvUpload({
             <div className="csv-file-details">
               <span className="csv-file-name">{selectedFile.name}</span>
               <span>{formatFileSize(selectedFile.size)}</span>
+            </div>
+          )}
+
+          {selectedFile && !mappingState.open && (
+            <button type="button" onClick={handleOpenMapping} className="csv-map-button" style={{ marginTop: '0.75rem' }}>
+              Map CSV columns
+            </button>
+          )}
+
+          {mappingState.open && (
+            <div className="csv-file-details" style={{ display: 'block', marginTop: '1rem' }}>
+              <h4>Map CSV columns</h4>
+              <p>Map source fields to the SPIP long-format schema, or keep the fixed default values below.</p>
+
+              <div style={{ display: 'grid', gap: '0.5rem', marginTop: '0.75rem' }}>
+                {SPIP_REQUIRED_FIELDS.map((field) => {
+                  const config = mappingState.mapping[field] || { type: 'fixed', value: '' }
+                  const fixedValue = field === 'entity_id'
+                    ? uploadEntityId
+                    : field === 'reporting_year'
+                      ? uploadYear
+                      : field === 'reporting_scope'
+                        ? 'ASSET'
+                        : field === 'property_type' && targetEntity?.property_type
+                          ? targetEntity.property_type
+                          : field === 'region' && targetEntity?.region
+                            ? targetEntity.region
+                            : ''
+
+                  return (
+                    <div key={field} style={{ display: 'grid', gap: '0.25rem' }}>
+                      <label htmlFor={`map-${field}`}>{field}</label>
+                      <select
+                        id={`map-${field}`}
+                        value={config.type === 'source' ? config.header : '__fixed__'}
+                        onChange={(event) => updateMappingSelection(field, event.target.value !== '__fixed__' ? event.target.value : '')}
+                      >
+                        <option value="__fixed__">Fixed value</option>
+                        {mappingState.headers.map((header) => (
+                          <option key={`${field}-${header}`} value={header}>{header}</option>
+                        ))}
+                      </select>
+
+                      {config.type === 'fixed' && (
+                        <input
+                          type="text"
+                          value={config.value || fixedValue}
+                          onChange={(event) => {
+                            const nextValue = event.target.value
+                            setMappingState((current) => ({
+                              ...current,
+                              mapping: {
+                                ...current.mapping,
+                                [field]: { type: 'fixed', value: nextValue },
+                              },
+                            }))
+                          }}
+                        />
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '1rem', flexWrap: 'wrap' }}>
+                <button type="button" onClick={handleGenerateMappedCsv}>Preview mapped CSV</button>
+              </div>
+
+              {mappingState.error && (
+                <p className="csv-status csv-status-error" role="alert" style={{ marginTop: '0.75rem' }}>
+                  {mappingState.error}
+                </p>
+              )}
+
+              {mappingState.generatedCsv && (
+                <div style={{ marginTop: '1rem' }}>
+                  <h5>Preview (first five rows)</h5>
+                  <pre style={{ whiteSpace: 'pre-wrap', overflowX: 'auto', fontSize: '0.8rem' }}>
+                    {mappedPreview}
+                  </pre>
+                  <button type="button" onClick={handleUseMappedCsv}>Use mapped CSV and continue</button>
+                </div>
+              )}
+
+              {mappingState.headers.length > 0 && !mappingState.generatedCsv && (
+                <div style={{ marginTop: '1rem' }}>
+                  <h5>Source preview</h5>
+                  <pre style={{ whiteSpace: 'pre-wrap', overflowX: 'auto', fontSize: '0.8rem' }}>
+                    {sourcePreview}
+                  </pre>
+                </div>
+              )}
             </div>
           )}
 
