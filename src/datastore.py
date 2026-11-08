@@ -73,6 +73,13 @@ class _TtlCache:
             self._entries.pop(key, None)
             return None
 
+    def invalidate_tenant(self, tenant_id: str) -> int:
+        with self._lock:
+            keys = [key for key in self._entries if key[-1] == tenant_id]
+            for key in keys:
+                del self._entries[key]
+            return len(keys)
+
     def put(self, key: tuple, frame: pd.DataFrame) -> pd.DataFrame:
         with self._lock:
             self._entries[key] = _Entry(time.monotonic() + self.ttl, frame)
@@ -94,6 +101,9 @@ class CsvDataSource:
     def __init__(self, path: str | Path, ttl_seconds: float = 60.0):
         self.path = Path(path)
         self._cache = _TtlCache(ttl_seconds)
+
+    def invalidate(self, tenant_id: str) -> int:
+        return self._cache.invalidate_tenant(tenant_id)
 
     def load(self, tenant_id: str) -> pd.DataFrame:
         # mtime is part of the key, so editing the CSV invalidates immediately.
@@ -128,6 +138,9 @@ class PostgresDataSource:
         self.public_url = public_url
         self.tenant_url = tenant_url
         self._cache = _TtlCache(ttl_seconds)
+
+    def invalidate(self, tenant_id: str) -> int:
+        return self._cache.invalidate_tenant(tenant_id)
 
     def load(self, tenant_id: str) -> pd.DataFrame:
         key = ("pg", tenant_id)

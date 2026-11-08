@@ -39,6 +39,7 @@ class Principal:
     subject: str
     tenant_id: str
     scopes: tuple[str, ...] = ()
+    groups: tuple[str, ...] = ()
 
 
 class MembershipStore(Protocol):
@@ -172,12 +173,16 @@ class Authenticator:
 
         claims = self.validator.verify(authorization.split(" ", 1)[1].strip())
         subject = str(claims["sub"])
+        groups = claims.get("cognito:groups", [])
+        if not isinstance(groups, list) or not all(isinstance(group, str) for group in groups):
+            raise InvalidToken("invalid cognito:groups claim")
         tenant = self.memberships.active_tenant(subject)
         if not tenant:
             raise NoMembership("no active tenant membership for this account")
         return Principal(
             subject=subject,
             tenant_id=tenant,
+            groups=tuple(groups),
             scopes=tuple(str(claims.get("scope", "")).split()),
         )
 
