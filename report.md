@@ -1,6 +1,6 @@
 SPIP — Backend Section (Architecture, Evaluation, Code)
 
-Version 0.6.3 · 2026-11-07 · Backend-owned parts of the Final report. Fits ~2 pages of the 10-page limit; business case, pricing and TCO are in the other sections.
+Version 0.6.3 · 2026-11-07 · Backend-owned parts of the Final report. 
 
 1. Architecture and implementation
 
