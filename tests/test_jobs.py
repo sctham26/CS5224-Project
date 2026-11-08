@@ -108,7 +108,8 @@ def test_identical_retry_replays_the_same_job(pipeline):
     assert again.status_code == 202
     assert again.json()["job_id"] == first["job_id"]
     assert again.headers.get("idempotent-replay") == "true"
-    assert len(queue.sent) == 1  # no duplicate dispatch
+    assert len(queue.sent) == 2  # QUEUED replay repairs an uncertain dispatch
+    assert queue.sent[0] == queue.sent[1]
 
 
 def test_same_key_with_different_body_conflicts(pipeline):

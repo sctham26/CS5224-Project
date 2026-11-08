@@ -254,7 +254,7 @@ class PostgresJobStore:
                 cur.execute(
                     f"INSERT INTO {_JOB_TABLE} (job_id, tenant_id, endpoint, idempotency_key,"
                     " status, entity_id, upload_key, request_hash, scope, reporting_year)"
-                    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING "
+                    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (tenant_id, endpoint, idempotency_key) DO NOTHING RETURNING "
                     + self._columns,
                     (
                         job_id,
@@ -269,7 +269,17 @@ class PostgresJobStore:
                         fields.get("reporting_year"),
                     ),
                 )
-                return self._row(cur.fetchone()), False
+                inserted = cur.fetchone()
+                if inserted is not None:
+                    return self._row(inserted), False
+                cur.execute(
+                    f"SELECT {self._columns} FROM {_JOB_TABLE} WHERE tenant_id = %s AND endpoint = %s AND idempotency_key = %s",
+                    (tenant_id, "POST /jobs", idempotency_key),
+                )
+                job = self._row(cur.fetchone())
+                if job.request_hash != request_hash:
+                    raise IdempotencyConflict("idempotency key reused with a different request")
+                return job, True
 
     def get(self, tenant_id: str, job_id: str) -> Optional[Job]:
         with self._connect() as conn:
