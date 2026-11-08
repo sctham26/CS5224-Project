@@ -177,6 +177,25 @@ class BackendRuntimeStack(Stack):
                              (gateway.HttpMethod.GET, "/analysis/{entity_id}")]:
             self.api.add_routes(path=path, methods=[method], integration=integration,
                                 authorizer=authorizer, authorization_scopes=list(config.authorization_scopes))
+        # Operational visibility is independent of scaling policies.
+        dashboard = cloudwatch.Dashboard(self, "OperationsDashboard", dashboard_name="spip-sandbox")
+        dashboard.add_widgets(
+            cloudwatch.GraphWidget(title="API and worker CPU", left=[api_service.metric_cpu_utilization(), self.worker_service.metric_cpu_utilization()]),
+            cloudwatch.GraphWidget(title="Queue backlog and age", left=[queue.metric_approximate_number_of_messages_visible()], right=[queue.metric_approximate_age_of_oldest_message()]),
+            cloudwatch.GraphWidget(title="ALB response time", left=[balancer.metric_target_response_time(statistic="p95")]),
+            cloudwatch.GraphWidget(title="Database connections", left=[data.database.metric_database_connections()]),
+        )
+        from aws_cdk import aws_sns as sns
+        alerts = sns.Topic(self, "OperationalAlerts", display_name="SPIP operational alerts")
+        for alarm_id, metric, threshold in [
+            ("QueueAge", queue.metric_approximate_age_of_oldest_message(), 300),
+            ("ApiErrors", balancer.metric_http_code_target(elb.HttpCodeTarget.TARGET_5XX_COUNT), 5),
+            ("DeadLetters", data.dlq.metric_approximate_number_of_messages_visible(), 1),
+        ]:
+            alarm = cloudwatch.Alarm(self, alarm_id, metric=metric, threshold=threshold,
+                evaluation_periods=2, treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING)
+            alarm.add_alarm_action(alarm_actions.SnsAction(alerts))
+        CfnOutput(self, "OperationalAlertsTopicArn", value=alerts.topic_arn)
         CfnOutput(self, "ApiEndpoint", value=self.api.api_endpoint)
         CfnOutput(self, "ApiTaskDefinitionArn", value=self.api_task.task_definition_arn)
         CfnOutput(self, "WorkerTaskDefinitionArn", value=self.worker_task.task_definition_arn)

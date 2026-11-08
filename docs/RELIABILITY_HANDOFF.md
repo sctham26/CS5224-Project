@@ -9,3 +9,9 @@ Integration currently disables upload persistence while cloud-config and the dep
 Deployment safety: always use the full backend context flags when deploying InfraStack; otherwise its API behaviors are omitted. Keep live image parameter values. Frontend publishing remains an explicit reviewed release; integration checks alone do not publish.
 
 Follow-ups owned jointly with application developers: durable dispatch recovery, DLQ reconciliation, job heartbeat/task protection, resumable browser polling, role enforcement PR #3, authenticated E2E and load testing. Cloud unit tests are not evidence of successful workload scaling or browser acceptance.
+
+## Separate observability addition
+
+The runtime now defines a CloudWatch dashboard (CPU, queue backlog/age, ALB p95, database connections) and SNS-connected alarms for queue age, target 5xx and DLQ messages. Subscribe an approved operations destination to OperationalAlertsTopicArn after deployment; the topic alone does not notify a person. No subscription or message is sent by this change. Additional alarms/dashboard incur AWS charges.
+
+Course acceptance: record a baseline, submit bounded authenticated jobs, capture API/worker desired and running task counts plus queue age and p95, verify every result, then observe drain and scale-in. Compare identical requests on cold/warm caches and different replicas. Do not fabricate results or send invalid messages to the shared queue. RDS remains single-AZ as an explicit cost trade-off; backup restoration, shared result caching and budget thresholds still require separate decisions.
