@@ -69,6 +69,7 @@ function CsvUpload({
     return proposedYear
   })
   const idempotencyKeyRef = useRef('')
+  const attemptRef = useRef({})
 
   useEffect(() => {
     if (selectedFile || ['reserving', 'uploading', 'queued', 'processing'].includes(status)) {
@@ -285,6 +286,11 @@ function CsvUpload({
       return
     }
 
+    const identity = attemptRef.current
+    if (identity.file !== selectedFile || identity.entityId !== uploadEntityId || identity.year !== uploadYear) {
+      idempotencyKeyRef.current = ''
+      attemptRef.current = { file: selectedFile, entityId: uploadEntityId, year: uploadYear }
+    }
     const key = idempotencyKeyRef.current || createIdempotencyKey()
     idempotencyKeyRef.current = key
 
@@ -293,12 +299,15 @@ function CsvUpload({
         entityId: uploadEntityId,
         reportingYear: uploadYear,
         idempotencyKey: key,
+        attempt: attemptRef.current,
         onProgress: (nextStatus, message) => {
           setStatus(nextStatus)
           setStatusMessage(message)
         },
       })
 
+      attemptRef.current = {}
+      idempotencyKeyRef.current = ''
       setStatus('completed')
       setStatusMessage(result.message)
       onUploadSuccess?.({
@@ -312,7 +321,7 @@ function CsvUpload({
           ? error.message
           : 'The upload could not be completed because of an unexpected error.'
 
-      setStatus('failed')
+      setStatus(error.pending ? 'pending' : 'failed')
       setStatusMessage(message)
     }
   }

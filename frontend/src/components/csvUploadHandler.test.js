@@ -118,7 +118,7 @@ describe('realCsvUploadHandler', () => {
         pollIntervalMs: 1,
         timeoutMs: 20,
       })
-    ).rejects.toThrow(/timed out/i)
+    ).rejects.toThrow(/still pending/i)
   })
 
   it('prefers the backend 503 detail when the response includes a plain-text message', async () => {
@@ -511,4 +511,17 @@ describe('CsvUpload target selection', () => {
     expect(uploadHandler).not.toHaveBeenCalled()
     expect(onUploadSuccess).not.toHaveBeenCalled()
   })
+})
+
+it('resumes an accepted job without another upload or submission', async () => {
+  const apiFetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ status: 'SUCCEEDED', result: { entity_id: 'A001' } }) })
+  const fetcher = vi.fn()
+  const attempt = { uploadKey: 'tenants/a/uploads/existing.csv', job: { job_id: 'existing' } }
+  const result = await realCsvUploadHandler(new File(['a'], 'a.csv'), {
+    entityId: 'A001', reportingYear: 2024, attempt, apiFetch, fetcher, pollIntervalMs: 1,
+  })
+  expect(result.jobId).toBe('existing')
+  expect(apiFetch).toHaveBeenCalledTimes(1)
+  expect(apiFetch.mock.calls[0][0]).toMatch(/jobs\/existing$/)
+  expect(fetcher).not.toHaveBeenCalled()
 })

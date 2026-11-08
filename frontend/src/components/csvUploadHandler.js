@@ -112,7 +112,8 @@ export async function realCsvUploadHandler(
     idempotencyKey,
     onProgress,
     pollIntervalMs = 1500,
-    timeoutMs = 60000,
+    timeoutMs = 180000,
+    attempt = {},
     apiFetch = authenticatedFetch,
     fetcher = fetch,
     baseUrl = API_BASE_URL,
@@ -129,6 +130,7 @@ export async function realCsvUploadHandler(
   const resolvedIdempotencyKey = idempotencyKey || createIdempotencyKey()
 
   try {
+    if (!attempt.uploadKey) {
     onProgress?.('reserving', 'Reserving upload space...')
 
     const reservationResponse = await apiFetch(`${baseUrl}/uploads`, {
@@ -159,8 +161,11 @@ export async function realCsvUploadHandler(
       )
     }
 
+    attempt.uploadKey = reservation.key
+    }
+
     const jobRequestBody = {
-      upload_key: reservation.key,
+      upload_key: attempt.uploadKey,
       entity_id: entityId,
       reporting_year: Number(reportingYear),
       scope: 'asset',
@@ -168,6 +173,8 @@ export async function realCsvUploadHandler(
 
     onProgress?.('queued', 'Upload complete. Submitting the processing job...')
 
+    let job = attempt.job
+    if (!job) {
     const jobResponse = await apiFetch(`${baseUrl}/jobs`, {
       method: 'POST',
       headers: {
@@ -181,9 +188,12 @@ export async function realCsvUploadHandler(
       throw new Error(await readErrorDetails(jobResponse, 'The upload job could not be submitted.'))
     }
 
-    const job = await jobResponse.json()
+    job = await jobResponse.json()
     if (!job?.job_id) {
       throw new Error('The job submission did not return a valid job identifier.')
+    }
+
+    attempt.job = job
     }
 
     const startedAt = Date.now()
@@ -227,16 +237,16 @@ export async function realCsvUploadHandler(
       onProgress?.('processing', 'Processing your CSV file...')
     }
 
-    const timeoutMessage = `The upload processing timed out after ${Math.round(timeoutMs / 1000)} seconds.`
-    onProgress?.('failed', timeoutMessage)
-    throw new Error(timeoutMessage)
+    const error = new Error('Your job is still pending. Retry to continue checking the same job.')
+    error.pending = true
+    throw error
   } catch (error) {
     const message =
       error instanceof Error
         ? error.message
         : 'The CSV upload could not be completed because of an unexpected error.'
 
-    onProgress?.('failed', message)
+    onProgress?.(error.pending ? 'pending' : 'failed', message)
     throw error
   }
 }
