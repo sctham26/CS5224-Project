@@ -9,6 +9,11 @@ class BackendConfig:
     postgres_version: str = "18.6"  # Available in ap-southeast-1 on 2026-10-23.
     multi_az: bool = True
     persist_uploads: bool = False
+    autoscaling_enabled: bool = False
+    api_max_tasks: int = 3
+    worker_max_tasks: int = 4
+    api_requests_per_target: int = 300
+    api_cpu_target_percent: int = 60
     visibility_seconds: int = 900
     job_lease_seconds: int = 840
     max_receive_count: int = 5
@@ -26,6 +31,16 @@ class BackendConfig:
             raise ValueError("postgres_version must be an available major.minor release")
         if int(self.postgres_version.split(".")[0]) < 16:
             raise ValueError("Database bootstrap requires PostgreSQL 16 or later")
+        if type(self.autoscaling_enabled) is not bool:
+            raise ValueError("autoscaling_enabled must be a JSON boolean")
+        for name, value, low, high in [
+            ("api_max_tasks", self.api_max_tasks, 1, 10),
+            ("worker_max_tasks", self.worker_max_tasks, 1, 10),
+            ("api_requests_per_target", self.api_requests_per_target, 1, 100000),
+            ("api_cpu_target_percent", self.api_cpu_target_percent, 10, 90),
+        ]:
+            if type(value) is not int or not low <= value <= high:
+                raise ValueError(f"Invalid {name}")
         if type(self.persist_uploads) is not bool:
             raise ValueError("persist_uploads must be a JSON boolean")
         if type(self.multi_az) is not bool:

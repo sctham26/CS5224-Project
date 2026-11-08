@@ -7,5 +7,8 @@
   "allowed_origins": [
     "https://d10rc41o4pb0h.cloudfront.net"
   ],
-  "persist_uploads": false
+  "persist_uploads": false,
+  "autoscaling_enabled": false,
+  "api_max_tasks": 3,
+  "worker_max_tasks": 4
 }

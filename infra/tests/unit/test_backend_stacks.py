@@ -8,9 +8,9 @@ from infra.backend_data_stack import BackendDataStack
 from infra.backend_runtime_stack import BackendRuntimeStack
 
 
-def stacks(runtime=False, persist_uploads=False):
+def stacks(runtime=False, persist_uploads=False, autoscaling_enabled=False):
     config = BackendConfig(
-        persist_uploads=persist_uploads,
+        persist_uploads=persist_uploads, autoscaling_enabled=autoscaling_enabled,
         allowed_origins=("https://example.cloudfront.net",),
         api_image="825990809862.dkr.ecr.ap-southeast-1.amazonaws.com/api@sha256:" + "a" * 64,
         worker_image="825990809862.dkr.ecr.ap-southeast-1.amazonaws.com/worker@sha256:" + "b" * 64,
@@ -137,3 +137,32 @@ def test_persistence_is_opt_in_and_worker_only(enabled):
 def test_persistence_rejects_string_boolean():
     with pytest.raises(ValueError, match="persist_uploads"):
         BackendConfig.from_dict({"persist_uploads": "true"})
+
+
+def test_autoscaling_is_independent_bounded_and_drains_safely():
+    _, runtime = stacks(runtime=True, autoscaling_enabled=True)
+    targets = items(runtime, "AWS::ApplicationAutoScaling::ScalableTarget")
+    assert sorted(t["Properties"]["MaxCapacity"] for t in targets) == [3, 4]
+    assert all("DesiredCount" not in s["Properties"] for s in items(runtime, "AWS::ECS::Service"))
+    assert all(t["Properties"]["MinCapacity"] == 1 for t in targets)
+    policies = items(runtime, "AWS::ApplicationAutoScaling::ScalingPolicy")
+    tracking = [p["Properties"]["TargetTrackingScalingPolicyConfiguration"] for p in policies if p["Properties"]["PolicyType"] == "TargetTrackingScaling"]
+    assert {p["PredefinedMetricSpecification"]["PredefinedMetricType"] for p in tracking} == {"ECSServiceAverageCPUUtilization", "ALBRequestCountPerTarget"}
+    step = [p["Properties"]["StepScalingPolicyConfiguration"] for p in policies if p["Properties"]["PolicyType"] == "StepScaling"]
+    assert len(step) == 2
+    assert all(s["ScalingAdjustment"] > 0 for p in step for s in p["StepAdjustments"])
+    drained = next(a["Properties"] for a in items(runtime, "AWS::CloudWatch::Alarm") if a["Properties"]["EvaluationPeriods"] == 15)
+    assert drained["DatapointsToAlarm"] == 15 and drained["Threshold"] == 0
+    assert "ApproximateNumberOfMessagesNotVisible" in json.dumps(drained)
+    assert "ApproximateNumberOfMessagesDelayed" in json.dumps(drained)
+
+
+def test_autoscaling_opt_out_has_no_scaling_resources():
+    _, runtime = stacks(runtime=True)
+    runtime.resource_count_is("AWS::ApplicationAutoScaling::ScalableTarget", 0)
+
+
+@pytest.mark.parametrize("kwargs", [{"autoscaling_enabled": "true"}, {"api_max_tasks": 0}, {"worker_max_tasks": 11}, {"api_cpu_target_percent": True}])
+def test_autoscaling_configuration_rejects_invalid_values(kwargs):
+    with pytest.raises(ValueError):
+        BackendConfig(**kwargs)
