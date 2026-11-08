@@ -52,4 +52,4 @@ python -m uvicorn api:app --app-dir src --port 8000
 
 5. AI use
 
-AI drafted modules, tests and this section; output was accepted only after verification against a test, a live response or a line of source. The analytical rules are configuration, not AI. The lesson: AI-generated work fails on edge cases and plausible prose, and the fix is measurement, not rewording.
+AI drafted modules, tests and this section; output was accepted only after verification against a test, a live response or a line of source. The analytical rules are configuration, not AI. The lesson: AI-generated work fails on edge cases and plausible prose, and the fix is measurement, not rewording. 
