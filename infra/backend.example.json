@@ -4,5 +4,8 @@
   "visibility_seconds": 900,
   "max_receive_count": 5,
   "upload_url_ttl_seconds": 300,
-  "allowed_origins": ["https://d10rc41o4pb0h.cloudfront.net"]
+  "allowed_origins": [
+    "https://d10rc41o4pb0h.cloudfront.net"
+  ],
+  "persist_uploads": false
 }

@@ -8,8 +8,9 @@ from infra.backend_data_stack import BackendDataStack
 from infra.backend_runtime_stack import BackendRuntimeStack
 
 
-def stacks(runtime=False):
+def stacks(runtime=False, persist_uploads=False):
     config = BackendConfig(
+        persist_uploads=persist_uploads,
         allowed_origins=("https://example.cloudfront.net",),
         api_image="825990809862.dkr.ecr.ap-southeast-1.amazonaws.com/api@sha256:" + "a" * 64,
         worker_image="825990809862.dkr.ecr.ap-southeast-1.amazonaws.com/worker@sha256:" + "b" * 64,
@@ -119,3 +120,20 @@ def test_placeholder_runtime_is_rejected():
         BackendConfig().validate_runtime()
     with pytest.raises(ValueError):
         BackendConfig.from_dict({"worker_command": "python worker.py"})
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_persistence_is_opt_in_and_worker_only(enabled):
+    _, runtime = stacks(runtime=True, persist_uploads=enabled)
+    for task in items(runtime, "AWS::ECS::TaskDefinition"):
+        container = task["Properties"]["ContainerDefinitions"][0]
+        env = {item["Name"]: item["Value"] for item in container["Environment"]}
+        if container["Name"] == "worker" and enabled:
+            assert env["SPIP_PERSIST_UPLOADS"] == "1"
+        else:
+            assert "SPIP_PERSIST_UPLOADS" not in env
+
+
+def test_persistence_rejects_string_boolean():
+    with pytest.raises(ValueError, match="persist_uploads"):
+        BackendConfig.from_dict({"persist_uploads": "true"})

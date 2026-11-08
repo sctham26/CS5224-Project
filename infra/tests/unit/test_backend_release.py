@@ -92,7 +92,7 @@ def test_github_role_has_no_infrastructure_or_secret_write_permissions():
     for statement in github_policy["Statement"]:
         action = statement["Action"]
         actions.update([action] if isinstance(action, str) else action)
-    assert {"ecr:PutImage", "lambda:InvokeFunction", "cloudformation:DescribeStacks"}.issubset(actions)
+    assert {"ecr:PutImage", "ecr:BatchGetImage", "lambda:InvokeFunction", "cloudformation:DescribeStacks"}.issubset(actions)
     assert not any(action.startswith(("iam:", "secretsmanager:", "rds:")) for action in actions)
     assert "cloudformation:UpdateStack" not in actions and "ecs:UpdateService" not in actions
     assert "ecs:DescribeTaskDefinition" not in actions

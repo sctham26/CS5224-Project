@@ -73,11 +73,14 @@ class BackendRuntimeStack(Stack):
             image_repository = ecr.Repository.from_repository_attributes(
                 self, f"{name}ImageRepository", repository_name=repository,
                 repository_arn=f"arn:{self.partition}:ecr:{region}:{account}:repository/{repository}")
+            container_environment = dict(environment)
+            if name == "worker" and config.persist_uploads:
+                container_environment["SPIP_PERSIST_UPLOADS"] = "1"
             container = task.add_container(
                 name, image=ecs.ContainerImage.from_registry(
                     image_repository.repository_uri + "@" + image_digests[name].value_as_string),
                 entry_point=["python", "/opt/spip-cloud/entrypoint.py"], command=command,
-                environment=environment, secrets=secrets,
+                environment=container_environment, secrets=secrets,
                 logging=ecs.LogDrivers.aws_logs(stream_prefix=name, log_group=group),
             )
             image_repository.grant_pull(task.execution_role)

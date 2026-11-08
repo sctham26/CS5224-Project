@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 class BackendConfig:
     postgres_version: str = "18.6"  # Available in ap-southeast-1 on 2026-10-23.
     multi_az: bool = True
+    persist_uploads: bool = False
     visibility_seconds: int = 900
     job_lease_seconds: int = 840
     max_receive_count: int = 5
@@ -25,6 +26,8 @@ class BackendConfig:
             raise ValueError("postgres_version must be an available major.minor release")
         if int(self.postgres_version.split(".")[0]) < 16:
             raise ValueError("Database bootstrap requires PostgreSQL 16 or later")
+        if type(self.persist_uploads) is not bool:
+            raise ValueError("persist_uploads must be a JSON boolean")
         if type(self.multi_az) is not bool:
             raise ValueError("multi_az must be a JSON boolean")
         for value, low, high, name in [
