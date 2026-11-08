@@ -1,5 +1,7 @@
 from fastapi.testclient import TestClient
+import pandas as pd
 
+import api
 from api import app
 
 client = TestClient(app)
@@ -85,3 +87,30 @@ def test_entities_can_be_filtered_by_scope():
     body = client.get("/entities", params={"scope": "asset"}).json()
     assert {e["scope"] for e in body["entities"]} == {"asset"}
     assert client.get("/entities", params={"scope": "planet"}).status_code == 422
+
+
+def test_analysis_result_is_cached(monkeypatch):
+    calls = []
+    real = api._analyse
+    monkeypatch.setattr(api, "_analyse", lambda *a, **k: calls.append(1) or real(*a, **k))
+    api._analysis_cache.clear()
+
+    params = {"reporting_year": 2024}
+    first = client.get("/analysis/SG_228218_LATEST_6", params=params)
+    second = client.get("/analysis/SG_228218_LATEST_6", params=params)
+
+    assert first.status_code == second.status_code == 200
+    assert len(calls) == 1
+    assert first.json() == second.json()
+
+
+def test_cache_misses_after_a_datasource_reload(monkeypatch):
+    """A reloaded frame is a new object, so the old result is never served."""
+    calls = []
+    monkeypatch.setattr(api, "_analyse", lambda *a, **k: calls.append(1) or {"ok": True})
+    api._analysis_cache.clear()
+
+    api._cached_analysis(pd.DataFrame({"entity_id": ["A"]}), "A", 2024, "asset", "t")
+    api._cached_analysis(pd.DataFrame({"entity_id": ["A"]}), "A", 2024, "asset", "t")
+
+    assert len(calls) == 2

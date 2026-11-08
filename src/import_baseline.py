@@ -125,8 +125,14 @@ def load(
     database_url: str,
     batch_size: int = 1000,
     dry_run: bool = False,
+    tenant_id: Optional[str] = None,
 ) -> int:
-    """Upsert rows in batches; all batches run in one transaction."""
+    """Upsert rows in batches; all batches run in one transaction.
+
+    ``tenant_id`` sets the RLS context before writing: the tenant policy's
+    ``USING`` clause doubles as the ``INSERT`` check, so without it every row is
+    rejected.
+    """
     items = list(rows)
     if dry_run:
         return len(items)
@@ -138,6 +144,8 @@ def load(
 
     with psycopg.connect(database_url) as conn:
         with conn.cursor() as cur:
+            if tenant_id:
+                cur.execute("SELECT set_config('app.tenant_id', %s, true)", (tenant_id,))
             for start in range(0, len(items), batch_size):
                 batch = items[start : start + batch_size]
                 cur.executemany(_UPSERT_SQL, batch)

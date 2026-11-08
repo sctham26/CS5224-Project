@@ -1,78 +1,55 @@
-SPIP — ESG Analytics Engine: Backend Technical Report
-Version 0.4.0 · 2026-10-30 · Status: building-level production data, authenticated multi-tenant API and async job pipeline are live in the cloud; the insufficient-peers null contract is verified end to end on the live deployment
+SPIP — Backend Section (Architecture, Evaluation, Code)
 
-1. Scope and positioning
+Version 0.6.3 · 2026-11-07 · Backend-owned parts of the Final report. 
 
-This report covers the backend half of the Sustainable Property Intelligence Platform: the standalone Python analytics engine (spip-analytics/), the HTTP boundary that exposes it, and its deployment state. It implements the Preliminary Design of ESG Data Harmonisation and Peer Benchmarking — harmonisation, rule-based peer selection, empirical percentile benchmarking and gap analysis.
+1. Architecture and implementation
 
-The engine is deliberately thin and dependency-free. The six core modules (schemas, metrics, harmonisation, peers, benchmark, gap_analysis) import nothing from AWS, no database driver and no web framework, so the analytical logic is testable and portable in isolation. Everything that touches the outside world sits in a separate boundary layer: contract.py (team CSV/DataFrame in, team JSON contract out), auth.py (Cognito access-token verification), datastore.py (tenant-scoped CSV and PostgreSQL sources), jobs.py (presigned uploads, S3/SQS adapters, idempotent job store), worker.py (queue consumer) and api.py (FastAPI routes).
+The service answers one question: how does this building compare with comparable buildings, and where should its owner act? For every disclosed metric it returns the peer median, the target's rank and empirical percentile, and a gap class — performance gap when a comparable value sits below the threshold, disclosure gap when the value is simply not reported. Lower-is-better metrics are reversed so 100 always means best.
 
-2. Data and harmonisation
+The engine runs on real building-level data: 12,767 observations, 1,561 buildings, 2017–2020 and 2022–2025. 2021 is absent from the source and left absent rather than interpolated. Harmonisation splits asset from portfolio scope, converts only compatible units and refuses the rest — 196 combined-metering, 190 special-use, 6 anomaly-flagged, 2 boundary-mismatch and 316 incomplete rows never reach a benchmark — leaving 6,187 comparable and 5,870 unit-converted observations.
 
-The engine runs on real building-level data, not synthetic samples: data/cleaned/public_esg_baseline.csv holds 12,767 observations covering 1,561 buildings, for reporting years 2017–2020 and 2022–2025 (2021 is genuinely absent from the source, and this is preserved rather than interpolated). Metric coverage is concentrated: ENERGY_INTENSITY_EUI 6,236 rows, CARBON_INTENSITY_SCOPE2 5,965, GREEN_CERT_LEVEL 564, ENERGY_INTENSITY_REPORTED_TOTAL 2. The synthetic dataset is retained only as a regression fixture.
+Peer selection is deterministic: at least five peers, target excluded, relaxed along a fixed ladder from property type plus region to the full pool, with scope, period, metric availability and canonical unit held fixed at every step. The cohort actually used is reported, so every benchmark is traceable. Percentiles include the target in the denominator and are normalised by n−1, which stops small groups from inflating scores.
 
-Harmonisation maps raw rows onto the common schema — entity, period, metric, standardised value and canonical unit, reporting scope, source, comparability status — then partitions by scope (asset vs portfolio) and converts only compatible values. The comparability split on the public baseline is 6,187 COMPARABLE and 5,870 UNIT_CONVERTED, with 196 COMBINED_METERING, 190 SPECIAL_USE_ISOLATED, 6 ANOMALY_FLAGGED and 2 BOUNDARY_MISMATCH correctly refused as non-comparable instead of being forced into a benchmark.
+The analytical core imports no AWS SDK, database driver or web framework, so it is testable in isolation; identity, storage and HTTP sit in a boundary layer. Cognito access tokens are verified against JWKS with an exact issuer match, and the tenant is derived server-side from the sub claim through tenant_membership — never from a request body or header. Foreign-tenant entities are filtered before analysis, so the API returns 404 rather than 403; PostgreSQL row-level security fails closed when the tenant context is unset.
 
-One data-quality fact matters for correctness: entity identifiers carry a dataset version (SG_307591_2020_0 for the older release, SG_129907_LATEST_0 for the newer one), so the same building changes ID across versions. Entity name and postal code are the stable keys. Because peer matching is period-exact, the two versions can never be pooled into one peer group.
+Ingestion is asynchronous: `POST /uploads` issues a short-lived presigned S3 PUT, `POST /jobs` is idempotent on tenant plus request hash, and the worker advances a monotonic PENDING → QUEUED → RUNNING → SUCCEEDED | FAILED machine. The worker merges the upload with the caller's stored view — public baseline plus that tenant's rows — so a single uploaded building is benchmarked against a real cohort, not against itself. Results are written before the terminal state and the queue is acknowledged only after that write is durable, so redelivery cannot re-run completed work.
 
-3. Peer selection
+Scale is deferred, not ignored. Today: one API service, one worker, one queue:
 
-Peer groups are rule-based and deterministic. The minimum group size is configurable and set to five peers excluding the target. Relaxation follows a fixed, configurable ladder — property_type plus region, then region alone, then property_type alone, then the full comparable pool — and every step preserves four compatibility constraints: same reporting scope, same reporting period, metric availability, and same canonical unit after conversion. The applied fallback (or its absence) is reported in the output, so a benchmark is always traceable to the cohort that produced it. If even the relaxed cohorts stay below the minimum, the engine reports the benchmark as unavailable rather than widening arbitrarily.
+| Component | Trigger | Lever | Cost |
+|---|---|---|---|
+| API | p95 latency, 5xx rate | more ECS tasks (stateless) | DB connections saturate before CPU |
+| Worker | queue depth, job latency | more tasks, batch polling | bills by throughput |
+| Data source | rows, tenants, p95 | peer selection in SQL, per-cohort precompute | storage vs freshness |
+| Cache | hit rate falls with instances | shared tier | one more service |
 
-4. Benchmarking
+The first real ceiling is `PostgresDataSource`, which reads the whole baseline plus tenant rows into memory on every cache expiry — irrelevant at 12,767 rows, first to change at millions. Computed reports are cached in-process (LRU plus TTL, keyed on frame identity, tenant, scope, entity, year): 0.003 ms on a hit against 760 ms to recompute.
 
-For each metric the engine returns the peer median, the target's relative rank and its empirical percentile. Percentiles are direction-aware: lower-is-better metrics such as carbon intensity are reversed so that 100 always means best performance. The target is included in the ranking denominator and normalised by n−1, which keeps small cohorts from producing inflated scores.
+2. Evaluation
 
-A representative built-in example: asset OFFICE/SG, reporting year 2024, peer cohort n = 239 with no fallback applied. Of eleven metrics, two are benchmarkable and nine are genuine disclosure gaps. For CARBON_INTENSITY_SCOPE2 the target sits at 51.66 kgCO2e/m2/yr against a peer median of 55.78 — rank 96, empirical percentile 60.25, delta to median −4.12, so no gap is flagged.
+The strongest evidence is a contract bug found and fixed. A too-small peer group used to be reported as "NONE" with the flag cleared, telling the frontend a building was fine when it had never been compared. It now returns null across benchmark, gap type and flag — and that behaviour was reproduced on the live pipeline, not just in tests.
 
-5. Gap analysis and the output contract
+- 116 of 116 pytest cases across 14 files pass locally (6.4 s); `scripts/verify_contract.py` passes 12 of 12 contract checks.
+- Live: `/api/health` 200 and business routes 401 without a token. With a real Cognito token on 2026-10-30, a three-entity CSV below the minimum cohort ran end to end and returned null with `fallback_reason: insufficient_peers`, while undisclosed metrics came back as disclosure gaps.
+- Real-data check: uploading only `SG_228218_LATEST_6` for 2024 yields cohort 239, median EUI 138.746, percentile 60.25, gap NONE.
+- The manual correctness workbook (`evaluation/correctness_SG.xlsx`) is committed and recomputes the same quantities by hand. Page-level browser end-to-end testing is still absent, so no claim of a full user-flow evaluation is made here.
 
-Gap signs follow one convention: delta_to_peer_median greater than zero means improvement is required, zero or below means at or better than the median. Two gap classes are produced. performance_gap fires when a comparable metric's percentile falls below the configurable threshold (default 40, per metric). disclosure_gap covers not_disclosed and incomparable_unit observations — these are treated as data gaps, not as poor performance.
+3. Assumptions and future work
 
-A contract bug was found and fixed in this cycle. When the peer group was too small, the engine layer already returned no gap, but the contract adapter rewrote that into gap_type "NONE" and is_flagged false, contradicting INTERFACES.md and telling the frontend "no gap" when the truth was "not benchmarked". The adapter now emits benchmark = null, gap_type = null and is_flagged = null for insufficient peers, and "NONE" is reserved for metrics that were genuinely compared and cleared. A regression test pins the target-plus-two-peers case; the suite is at 107 passing tests. The fix is no longer only a source-level claim: it has been reproduced on the live deployment through the full upload pipeline (section 8).
+One standardised format is accepted (nine required of twenty columns); customer exports reach it through a browser-side column mapper with human confirmation, not automatically. The 40th-percentile threshold is a placeholder; certification is loaded but not a peer criterion; period matching is exact. Uploaded rows are not written back — that path exists behind a flag but needs a database grant the deployment does not issue.
 
-6. Identity, tenancy and authorisation
+Next: unit inference with a proposed conversion, unmapped-metric reporting, and a shared cache tier. Automated collection of public data was evaluated and dropped: the BCA source was last updated in June 2024 and our baseline already covers 2025.
 
-Authentication is real, not decorative. auth.py verifies the Cognito access token against JWKS with an exact issuer match, rejects expired tokens, requires token_use = access, accepts the audience as client_id or aud, and requires the spip/access scope. The tenant is derived server-side, exclusively, from the sub claim resolved through tenant_membership — request bodies, headers, e-mail fields and ID-token claims never select a tenant.
+4. Code explanation
 
-Status codes are deliberate: 401 for a missing, invalid or expired token; 403 for an authenticated user with no tenant membership; 404 for any entity the caller cannot see. Because foreign-tenant rows are filtered out before analysis, the API returns 404 rather than 403 and does not leak whether an entity exists. Data visibility is the union of the public baseline and the caller's own tenant rows.
+Repository: `spip-analytics/` (public URL to be added by the team). Core modules are flat files in `src/`: schemas, metrics, harmonisation, peers, benchmark, gap_analysis, plus the boundary modules contract, auth, datastore, jobs, worker, api, import_baseline. Config in `config/`, migrations in `migrations/001`–`004`, tests in `tests/`, baseline CSV in `data/cleaned/`.
 
-Authorisation is enforced in the application, not only at the gateway. PostgreSQL tables are under FORCE RLS driven by app.tenant_id / app.user_sub, and the policy returns no rows when the context is unset — fail-closed rather than fail-open. The open dependency is that the application database role must neither own the tables nor hold BYPASSRLS, otherwise FORCE RLS is inert; this still needs written confirmation from the cloud side.
+```powershell
+pip install -r requirements.txt
+python -m pytest -q                 # 116 tests
+python -m uvicorn api:app --app-dir src --port 8000
+```
 
-7. Async upload and job pipeline
+5. AI use
 
-Large CSV ingest does not stream bytes through the API. POST /uploads issues a short-lived presigned S3 PUT for tenants/<tenant>/uploads/<uuid>.csv; POST /jobs requires an Idempotency-Key and deduplicates on tenant + endpoint + request hash — an identical retry returns the same job with 202 and a replay header, a same-key different-body request returns 409, and a key outside the caller's prefix returns 404. GET /jobs/{job_id} checks ownership first and returns 404 for other tenants.
-
-The state machine is monotonic: PENDING → QUEUED → RUNNING → SUCCEEDED | FAILED, with both the store and a database trigger refusing regressions. The worker claims jobs with a lease that is shorter than the queue visibility timeout, pulls the object from S3, runs the engine, writes result.json before the terminal state, and only acknowledges SQS after the terminal state is durable — so redelivery cannot re-run completed work. Malformed files fail asynchronously instead of erroring the 202 response, transient errors are retried by visibility timeout, and a DLQ reconciliation mode converts exhausted messages into visible FAILED jobs so nothing is stranded in RUNNING. When no bucket or queue is configured, the three routes return 503 and local development is unaffected.
-
-8. Verification evidence
-
-Local: 107 of 107 pytest cases across 13 test files pass (21.6s, re-run for this report); the example pipeline produces the 11-metric output quoted above; scripts/verify_contract.py passes 12 of 12 checks locally covering health, negative auth, /entities fields, /analysis contract fields, unknown entity 404 and /jobs header validation.
-
-Cloud: the backend at commit e8a9f65, including the null-gap contract fix, was released on 2026-10-26 as the immutable image spip-backend@sha256:817e9a4… and pinned into the API, worker and operator task definitions; repeated pipeline runs since then all succeeded, and the live image is now spip-backend@sha256:b608bb66… at commit c76e547, with 54bb8ee3…, 499e2b28… and 817e9a4… as the rollback chain. Unauthenticated probes from outside return 200 on /api/health and 401 on /api/entities and /api/analysis/..., confirming the deployment is reachable and closed by default — re-checked after each rebuild.
-
-Cloud, authenticated end-to-end (2026-10-30): using a real Cognito access token (spip-songsifan tenant), the full asynchronous pipeline was exercised against the live gateway with a purpose-built three-entity CSV — a target plus two peers, below the minimum cohort of five. The public baseline cannot trigger this path naturally (every asset pool holds five or more comparable entities), so the cohort was uploaded and the worker analysed the uploaded file itself. The run closed end to end: POST /uploads returned 201 with a presigned tenant-scoped URL, the presigned S3 PUT returned 200, POST /jobs returned 202, and the job reached SUCCEEDED. In the stored result, ENERGY_INTENSITY_EUI — the one disclosed metric — returned standardised_value 200.0 with comparability_status COMPARABLE, while benchmark, gap_type and is_flagged were all null, peer_cohort reported sample_size_n 0 with fallback_reason insufficient_peers, and the recommendation signal read "peer cohort unavailable (n < 5 after fallback); benchmark not asserted". The other ten metrics, none of which the file disclosed, correctly came back as DISCLOSURE_GAP / INCOMPLETE_DATA, and the result was stamped tenant_id spip-songsifan. The two "nothing to compare" states are now observably distinct on the live system — undisclosed is flagged, small-cohort is neither flagged nor cleared — and this closes the last open measurement on the contract fix.
-
-9. Deployment and CI
-
-Release automation exists but is narrow. A workflow on the backend-analysis branch builds and tests the image without credentials, assumes an OIDC role, pushes to ECR, releases through a fixed CloudFormation image parameter, and then runs verify_api.py for health and negative authentication; this path has been exercised repeatedly and succeeded every time. Two limits are known: it triggers only on backend-analysis, so integration and main have no backend lint/test/build gate; and a manual dispatch is skipped on any ref other than backend-analysis because the reusable release job is conditioned on that branch — the caller's guard job now fails such a dispatch explicitly instead of skipping it silently. The reusable workflow is pinned by commit hash and must be bumped manually when the cloud configuration changes. The frontend pipeline now also triggers on integration and on pull requests, and can run check-only against a feature branch; but because a push event evaluates the workflow file of the branch it lands on, integration is covered only once that file itself reaches integration.
-
-10. Open items
-
-The insufficient-peers null contract is now verified at every layer — engine, adapter, unit test and live authenticated pipeline — so the remaining contract-side work is presentation and merge. Two frontend branches carry the fixes but are not yet in integration: feature/insufficient-peer-display (c5dde1a) renders "Insufficient peer sample" for null flags, and feature/real-csv-upload (e554763) replaces the demo upload stub with the real presigned-upload → job → poll flow, verified locally at 20 passing tests, clean lint and a successful build. Until these merge, the deployed page still reads "Not Flagged" for small cohorts and still cannot upload. Beyond that, the following assumptions await team sign-off: the 40th-percentile threshold is a placeholder that may need to vary by metric or property type; certification is loaded but not yet a peer criterion; reporting-period matching is exact string matching, so partial-period overlap is undefined; source granularity (report, page, dataset) is undecided; and whether uploaded CSVs are harmonised into PostgreSQL after processing is still unresolved.
-
-11. AI Usage Illustration
-
-AI served as an implementation and review assistant under a single rule: its output was accepted only after verification against something external — a test suite, a live response, or source code. This rule reflects a broader division of labour. The analytical engine itself runs no AI at runtime; peer selection, unit conversion, percentile ranking and gap thresholds are deterministic rules driven by config files, so every result is reproducible and auditable. Likewise, the domain choices — the metric dictionary, peer dimensions and thresholds — were made by the team, not by AI. What AI contributed, then, was assistance under human-defined constraints, and the same constraints governed its access: with no standing credentials or AWS roles, every cloud-side change was executed and confirmed by the infrastructure owner, and the only credential AI ever handled was a short-lived token for the closing e2e, which expired within minutes and was never committed. 
-
-The residual risk follows directly from this arrangement: AI-assisted code can fail under real data, and AI-assisted prose can read plausibly while being wrong. Both risks are bounded by the same rule that governed acceptance in the first place — no claim ships without a test, a live response, or a line of source behind it. 
-
-| Activity | How AI was used | How it was verified |
-|---|---|---|
-| Engine and boundary implementation | Drafted modules (harmonisation, peers, benchmark, gap_analysis, contract, api, jobs, worker) and their models from the written preliminary design | 107 pytest cases including fallback-order, cross-year non-padding, percentile-boundary and idempotency cases; human review before merge |
-| Test authoring | Generated unit and integration tests, including adversarial ones: a peer group of two, a duplicate Idempotency-Key with a different body, an upload key outside the caller's prefix | Executed locally and inside the release image; failures were treated as implementation bugs to fix, not to hide |
-| Contract review | Cross-checked contract.py against INTERFACES.md and the frontend's rendering code, which surfaced the insufficient_peers mismatch described in §5 | Reproduced with a target-plus-two-peers fixture, fixed with a regression test, and rebuilt into the shipped image |
-| Repository and release inspection | Compared the integration, cloud-config and feature branches to decide which files to keep from each, and read the deployment configuration to reconstruct what was actually released | Every claim traced to a commit hash, file path or line number, re-checked after fetching the latest branches |
-| Deployment verification | Probed the live CloudFront endpoints and inspected the deployed JavaScript bundle to establish which build was serving and how it renders the insufficient-peers state; designed a three-entity cohort CSV that forces the insufficient-peers path, which the public baseline cannot trigger naturally | Unauthenticated probes (200 on /api/health, 401 on business routes) and then a token-authenticated end-to-end upload run through the live pipeline (section 8); the token was supplied by its owner, expired within minutes, and never entered the repository or this report |
-| Documentation and presentation | Drafted this report, the README and the three-minute talk track from the technical record | Figures re-derived by re-running the test suite and the example pipeline rather than copied from earlier notes |
-
+AI drafted modules, tests and this section; output was accepted only after verification against a test, a live response or a line of source. The analytical rules are configuration, not AI. The lesson: AI-generated work fails on edge cases and plausible prose, and the fix is measurement, not rewording. 
