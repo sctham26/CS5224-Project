@@ -6,7 +6,7 @@ This module builds the React/Vite application and publishes `frontend/dist/` to 
 
 Updated 2026-11-01. Deployment logic stays in `cloud-config`; application integration stays with the frontend team.
 
-- Pushes and PRs from `cloud-config` check the current `integration` frontend, never the cloud branch's historical frontend. Other main/integration pushes and PR checks build the exact event commit. PRs run without AWS credentials. Integration triggers become available once that branch receives this workflow; feature-only pushes currently do not install or trigger this cloud workflow.
+- Pushes and PRs from `cloud-config` check the current `integration` frontend, never the cloud branch's historical frontend. Other main/integration pushes and PR checks build the exact event commit. PRs run without AWS credentials. Integration now contains this workflow and its push checks are active; feature-only pushes do not install or trigger this cloud workflow.
 - **Manual checks:** open Actions → Frontend checks and AWS deployment → Run workflow. Select workflow branch **cloud-config**, choose `frontend_source_ref`, and leave `deploy=false`. Approved sources are `integration` and the three frontend feature branches listed in the input menu. Feature branches are check-only.
 - **Manual test publication:** after the frontend team merges and tests its changes in `integration`, select that source with `deploy=true`. This publishes to the existing **shared** CloudFront test site, replacing its current UI. It is not an isolated preview URL. The latest integration commit is resolved once at checkout; publishing downloads that run's tested build and never rechecks a moving branch.
 - Pushes to `main` retain automatic publication. Cloud-config/integration pushes do not publish automatically; manual publication requires the explicit boolean and a trusted cloud-config/main workflow ref.
@@ -19,15 +19,15 @@ No frontend JS, IAM trust, Cognito settings, API/S3 CORS, database or running si
 
 | Branch | Fetched head | Status |
 | --- | --- | --- |
-| `feature/frontend-error-handling` | `e00c7a1` | Includes real CSV upload branch plus entity/retry handling and README updates |
+| `feature/frontend-error-handling` | `217a184` | Includes real CSV upload, entity/retry handling and production configuration notes; merged into integration |
 | `feature/real-csv-upload` | `e554763` | Already an ancestor of error-handling; no separate duplicate merge needed |
-| `feature/insufficient-peer-display` | `c5dde1a` | Independent; not included in either branch above |
-| `integration` | `243e683` | Still needs frontend feature integration and the latest cloud release configuration |
-| `backend-analysis` | `faaa3f6` | Latest backend release run `41004869610` succeeded on 2026-10-30 |
+| `feature/insufficient-peer-display` | `c5dde1a` | Independent of the upload/error-handling feature history; now merged into integration |
+| `integration` | `66dd626` | Combines insufficient-peer display, real upload/error handling, backend updates and cloud-config through 83813f7 |
+| `backend-analysis` | `e6eb5c0` | Latest backend release run `41261663144` succeeded on 2026-11-01 |
 
-Michael/frontend owners should combine error-handling and insufficient-peer-display, resolve overlapping App.jsx changes, and rerun the combined tests before publishing integration. A passing feature-branch test run is not evidence that the combined frontend works. The new upload code follows the existing cloud transport: authenticated POST /api/uploads → ordinary presigned S3 PUT without a bearer header → authenticated POST /api/jobs with Idempotency-Key → GET /api/jobs/{id}. No new API route or database deployment is required for that sequence. Backend-owned request fields and tenant authorization remain authoritative; see API_INTEGRATION.md.
+The frontend owner has combined error-handling and insufficient-peer-display in integration. [Integration CI 41273174001](https://github.com/sctham26/CS5224-Project/actions/runs/41273174001) passed the combined frontend lint/tests/build and infrastructure checks; deployment was skipped. This proves the combined build passed, not that the UI has been published or its live upload journey verified. The new upload code follows the existing cloud transport: authenticated POST /api/uploads → ordinary presigned S3 PUT without a bearer header → authenticated POST /api/jobs with Idempotency-Key → GET /api/jobs/{id}. No new API route or database deployment is required for that sequence. Backend-owned request fields and tenant authorization remain authoritative; see API_INTEGRATION.md.
 
-The team's reported frontend test count and pending browser upload test are not a completed live AWS UI acceptance test. Run the actual login/upload/result journey on the shared site after the integrated source is intentionally published. Preserve the newer cloud automatic-release files when merging cloud-config into integration.
+The team's reported frontend test count and pending browser upload test are not a completed live AWS UI acceptance test. Run the actual login/upload/result journey on the shared site after the integrated source is intentionally published. The cloud automatic-release files are now present in integration and must be preserved during subsequent merges. The frontend workflow explicitly lists the four cloud unittest modules so a combined repository does not accidentally import backend pytest modules through broad unittest discovery; this integration fix is mirrored in cloud-config.
 
 ## One-time setup
 

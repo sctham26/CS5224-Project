@@ -16,7 +16,7 @@ def apply_migrations(public_url, tenant_url, directory):
     directory = Path(directory)
     for url, filenames in [
         (public_url, ["001_public.sql", "004_observation_upsert_key.sql"]),
-        (tenant_url, ["002_tenant.sql", "003_jobs.sql"]),
+        (tenant_url, ["002_tenant.sql", "003_jobs.sql", "004_observation_upsert_key.sql"]),
     ]:
         with psycopg.connect(url) as conn:
             conn.execute("SET LOCAL search_path TO app, public")

@@ -4,6 +4,8 @@ from aws_cdk import (
     aws_apigatewayv2 as gateway, aws_apigatewayv2_authorizers as auth,
     aws_apigatewayv2_integrations as integrations, aws_ec2 as ec2,
     aws_ecs as ecs, aws_elasticloadbalancingv2 as elb, aws_logs as logs,
+    aws_cloudwatch_actions as alarm_actions,
+    aws_cloudwatch as cloudwatch, aws_applicationautoscaling as scaling,
     aws_kms as kms, aws_s3 as s3, aws_secretsmanager as sm, aws_sqs as sqs, aws_ecr as ecr,
 )
 from constructs import Construct
@@ -73,11 +75,14 @@ class BackendRuntimeStack(Stack):
             image_repository = ecr.Repository.from_repository_attributes(
                 self, f"{name}ImageRepository", repository_name=repository,
                 repository_arn=f"arn:{self.partition}:ecr:{region}:{account}:repository/{repository}")
+            container_environment = dict(environment)
+            if name == "worker" and config.persist_uploads:
+                container_environment["SPIP_PERSIST_UPLOADS"] = "1"
             container = task.add_container(
                 name, image=ecs.ContainerImage.from_registry(
                     image_repository.repository_uri + "@" + image_digests[name].value_as_string),
                 entry_point=["python", "/opt/spip-cloud/entrypoint.py"], command=command,
-                environment=environment, secrets=secrets,
+                environment=container_environment, secrets=secrets,
                 logging=ecs.LogDrivers.aws_logs(stream_prefix=name, log_group=group),
             )
             image_repository.grant_pull(task.execution_role)
@@ -97,14 +102,14 @@ class BackendRuntimeStack(Stack):
 
         self.api_service = api_service = ecs.FargateService(
             self, "ApiService", cluster=data.cluster, task_definition=self.api_task,
-            desired_count=1, min_healthy_percent=100, max_healthy_percent=200, assign_public_ip=True, security_groups=[api_sg],
+            desired_count=None if config.autoscaling_enabled else 1, min_healthy_percent=100, max_healthy_percent=200, assign_public_ip=True, security_groups=[api_sg],
             vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
             circuit_breaker=ecs.DeploymentCircuitBreaker(rollback=True),
             health_check_grace_period=Duration.seconds(60),
         )
         self.worker_service = ecs.FargateService(
             self, "WorkerService", cluster=data.cluster, task_definition=self.worker_task,
-            desired_count=1, min_healthy_percent=100, max_healthy_percent=200, assign_public_ip=True, security_groups=[data.worker_sg],
+            desired_count=None if config.autoscaling_enabled else 1, min_healthy_percent=100, max_healthy_percent=200, assign_public_ip=True, security_groups=[data.worker_sg],
             vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
             circuit_breaker=ecs.DeploymentCircuitBreaker(rollback=True),
         )
@@ -117,8 +122,40 @@ class BackendRuntimeStack(Stack):
             vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_ISOLATED),
         )
         listener = balancer.add_listener("Http", port=80, open=False)
-        listener.add_targets("Api", port=8000, targets=[api_service],
+        target_group = listener.add_targets("Api", port=8000, targets=[api_service],
                              health_check=elb.HealthCheck(path="/health"))
+        if config.autoscaling_enabled:
+            api_capacity = api_service.auto_scale_task_count(min_capacity=1, max_capacity=config.api_max_tasks)
+            api_capacity.scale_on_request_count("Requests", target_group=target_group,
+                requests_per_target=config.api_requests_per_target,
+                scale_out_cooldown=Duration.seconds(60), scale_in_cooldown=Duration.minutes(5))
+            api_capacity.scale_on_cpu_utilization("Cpu", target_utilization_percent=config.api_cpu_target_percent,
+                scale_out_cooldown=Duration.seconds(60), scale_in_cooldown=Duration.minutes(5))
+            worker_capacity = self.worker_service.auto_scale_task_count(
+                min_capacity=1, max_capacity=config.worker_max_tasks)
+            # Positive changes only: a smaller backlog must never stop busy workers.
+            worker_capacity.scale_on_metric("Backlog", metric=queue.metric_approximate_number_of_messages_visible(
+                period=Duration.minutes(1), statistic="Maximum"),
+                scaling_steps=[scaling.ScalingInterval(upper=1, change=0), scaling.ScalingInterval(lower=1, change=1)],
+                adjustment_type=scaling.AdjustmentType.CHANGE_IN_CAPACITY,
+                evaluation_periods=2, datapoints_to_alarm=2, cooldown=Duration.minutes(2))
+            # Conservative scale-in without touching backend code. Missing metrics do
+            # not count as an empty queue; include leased and delayed work as well.
+            outstanding = cloudwatch.MathExpression(expression="FILL(visible, 1) + FILL(inflight, 1) + FILL(delayed, 1)",
+                period=Duration.minutes(1), using_metrics={
+                    "visible": queue.metric_approximate_number_of_messages_visible(statistic="Maximum"),
+                    "inflight": queue.metric_approximate_number_of_messages_not_visible(statistic="Maximum"),
+                    "delayed": queue.metric_approximate_number_of_messages_delayed(statistic="Maximum"),
+                })
+            drained_action = scaling.StepScalingAction(self, "WorkerDrainedAction",
+                scaling_target=worker_capacity.node.find_child("Target"),
+                adjustment_type=scaling.AdjustmentType.EXACT_CAPACITY, cooldown=Duration.minutes(15))
+            drained_action.add_adjustment(upper_bound=0, adjustment=1)
+            drained_alarm = cloudwatch.Alarm(self, "WorkerDrainedAlarm", metric=outstanding,
+                threshold=0, comparison_operator=cloudwatch.ComparisonOperator.LESS_THAN_OR_EQUAL_TO_THRESHOLD,
+                evaluation_periods=15, datapoints_to_alarm=15,
+                treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING)
+            drained_alarm.add_alarm_action(alarm_actions.ApplicationScalingAction(drained_action))
         link = gateway.VpcLink(self, "VpcLink", vpc=data.vpc, security_groups=[link_sg],
                                subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_ISOLATED))
         integration = integrations.HttpAlbIntegration(

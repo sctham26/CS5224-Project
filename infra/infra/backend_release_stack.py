@@ -32,7 +32,7 @@ class BackendReleaseStack(Stack):
                     "repo:sctham26@337585649/CS5224-Project@1403949135:ref:refs/heads/backend-analysis",
             }}, "sts:AssumeRoleWithWebIdentity"), max_session_duration=Duration.hours(1))
         repository.grant_push(role)
-        role.add_to_policy(iam.PolicyStatement(actions=["ecr:DescribeImages"],
+        role.add_to_policy(iam.PolicyStatement(actions=["ecr:DescribeImages", "ecr:BatchGetImage"],
             resources=[repository.repository_arn]))
         broker.grant_invoke(role)
         role.add_to_policy(iam.PolicyStatement(actions=["cloudformation:DescribeStacks"], resources=[runtime_arn]))
