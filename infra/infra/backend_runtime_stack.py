@@ -1,6 +1,6 @@
 """Optional real-image API/worker runtime; JWT-protected routes only."""
 from aws_cdk import (
-    CfnOutput, CfnParameter, Duration, RemovalPolicy, Stack,
+    CfnOutput, CfnParameter, Duration, RemovalPolicy, Stack, Fn,
     aws_apigatewayv2 as gateway, aws_apigatewayv2_authorizers as auth,
     aws_apigatewayv2_integrations as integrations, aws_ec2 as ec2,
     aws_ecs as ecs, aws_elasticloadbalancingv2 as elb, aws_logs as logs,
@@ -187,14 +187,14 @@ class BackendRuntimeStack(Stack):
             cloudwatch.GraphWidget(title="API and worker CPU", left=[api_service.metric_cpu_utilization(), self.worker_service.metric_cpu_utilization()]),
             cloudwatch.GraphWidget(title="Queue backlog and age", left=[queue.metric_approximate_number_of_messages_visible()], right=[queue.metric_approximate_age_of_oldest_message()]),
             cloudwatch.GraphWidget(title="ALB response time", left=[balancer.metric_target_response_time(statistic="p95")]),
-            cloudwatch.GraphWidget(title="Database connections", left=[data.database.metric_database_connections()]),
+            cloudwatch.GraphWidget(title="Database connections", left=[cloudwatch.Metric(namespace="AWS/RDS", metric_name="DatabaseConnections", dimensions_map={"DBInstanceIdentifier": data.database_identifier})]),
         )
         from aws_cdk import aws_sns as sns
         alerts = sns.Topic(self, "OperationalAlerts", display_name="SPIP operational alerts")
         for alarm_id, metric, threshold in [
             ("QueueAge", queue.metric_approximate_age_of_oldest_message(), 300),
             ("ApiErrors", balancer.metric_http_code_target(elb.HttpCodeTarget.TARGET_5XX_COUNT), 5),
-            ("DeadLetters", data.dlq.metric_approximate_number_of_messages_visible(), 1),
+            ("DeadLetters", cloudwatch.Metric(namespace="AWS/SQS", metric_name="ApproximateNumberOfMessagesVisible", dimensions_map={"QueueName": Fn.select(4, Fn.split("/", data.dlq.queue_url))}, statistic="Maximum"), 1),
         ]:
             alarm = cloudwatch.Alarm(self, alarm_id, metric=metric, threshold=threshold,
                 evaluation_periods=2, treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING)

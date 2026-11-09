@@ -70,6 +70,7 @@ class BackendDataStack(Stack):
                  threshold=1, evaluation_periods=1, treat_missing_data=cw.TreatMissingData.NOT_BREACHING)
 
         db_name = "spip-backend-data"
+        self.database_identifier = db_name
         self.database_log = logs.LogGroup(
             self, "DatabaseLog", log_group_name=f"/aws/rds/instance/{db_name}/postgresql",
             encryption_key=self.key, retention=logs.RetentionDays.ONE_MONTH,
