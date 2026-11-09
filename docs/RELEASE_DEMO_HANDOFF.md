@@ -7,3 +7,7 @@ This change accepts a stable zero-capacity worker during release verification (A
 persist_uploads is disabled for this demo release. CSV objects and computed result JSON remain durable in S3; uploaded observations are not written back to the tenant database. Re-enable only after a dedicated end-to-end grant/migration and upload test. No new database-wide grants are applied here.
 
 Backend pushes must use the updated pinned reusable cloud workflow. Each run records source commit and image digest; success requires completed CloudFormation rollout, matching task revisions and valid desired/running counts, then public routing/auth rejection checks. Those smoke checks do not establish authenticated upload success. Demo acceptance additionally requires a test-tenant login, CSV upload, job completion and a cross-tenant negative check.
+
+## New release provenance
+
+Backend source: be811685ef57de125ec60efdde74a8dfa233eb3c. ECR digest: sha256:783dfcb73834f21846ac602eaab474ebc6c5baff3531b566a98dc77b96b10ce1. Release run: https://github.com/sctham26/CS5224-Project/actions/runs/42655656319 . Sandbox image defaults are refreshed to this release; future automated releases still use live stack parameters and run artifacts as authority. PR #4 was refreshed with the DLQ guard and remains an unmerged proposal for additional dispatch/ack improvements.
