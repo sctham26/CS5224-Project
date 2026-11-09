@@ -220,7 +220,7 @@ class BackendRuntimeStack(Stack):
 
     def _grant_tenant_object_access(self, tenant_bucket, key, *, api_read, api_write, worker_read, worker_write):
         """Grant object Get/Put on the given tenant prefixes and a single
-        prefix-constrained ListBucket, so no task role can list across tenants."""
+        prefix-constrained ListBucket, restricting enumeration to application paths; tenant authorization remains application-enforced."""
         from aws_cdk import aws_iam as iam
         bucket_arn = tenant_bucket.bucket_arn
 
@@ -254,4 +254,7 @@ class BackendRuntimeStack(Stack):
                 conditions={"StringLike": {"s3:prefix": all_prefixes}},
             ))
             # Reading encrypted objects requires the data key.
-            key.grant_decrypt(role)
+            if write_prefixes:
+                key.grant_encrypt_decrypt(role)
+            else:
+                key.grant_decrypt(role)

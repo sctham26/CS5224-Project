@@ -20,7 +20,7 @@ def verify_services(result, outputs):
             {s["serviceArn"] for s in services} != set(expected)):
         raise ValueError("Could not verify both application services")
     for service in services:
-        if (service["desiredCount"] < 1 or service["runningCount"] != service["desiredCount"] or service["pendingCount"] != 0 or
+        if (service["desiredCount"] < (1 if service["serviceArn"] == outputs["ApiServiceArn"] else 0) or service["runningCount"] != service["desiredCount"] or service["pendingCount"] != 0 or
                 len(service["deployments"]) != 1 or service["deployments"][0]["rolloutState"] != "COMPLETED"):
             raise ValueError("Application service is not stable")
         # Stack parameters were checked against the requested digest. Each service
