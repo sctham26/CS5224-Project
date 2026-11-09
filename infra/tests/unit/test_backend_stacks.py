@@ -8,9 +8,9 @@ from infra.backend_data_stack import BackendDataStack
 from infra.backend_runtime_stack import BackendRuntimeStack
 
 
-def stacks(runtime=False, persist_uploads=False, autoscaling_enabled=False):
+def stacks(runtime=False, persist_uploads=False, autoscaling_enabled=False, **resources):
     config = BackendConfig(
-        persist_uploads=persist_uploads, autoscaling_enabled=autoscaling_enabled,
+        persist_uploads=persist_uploads, autoscaling_enabled=autoscaling_enabled, **resources,
         allowed_origins=("https://example.cloudfront.net",),
         api_image="825990809862.dkr.ecr.ap-southeast-1.amazonaws.com/api@sha256:" + "a" * 64,
         worker_image="825990809862.dkr.ecr.ap-southeast-1.amazonaws.com/worker@sha256:" + "b" * 64,
@@ -164,5 +164,19 @@ def test_autoscaling_opt_out_has_no_scaling_resources():
 
 @pytest.mark.parametrize("kwargs", [{"autoscaling_enabled": "true"}, {"api_max_tasks": 0}, {"worker_max_tasks": 11}, {"api_cpu_target_percent": True}])
 def test_autoscaling_configuration_rejects_invalid_values(kwargs):
+    with pytest.raises(ValueError):
+        BackendConfig(**kwargs)
+
+
+def test_large_worker_resources_and_dashboard():
+    _, runtime = stacks(runtime=True, worker_cpu=2048, worker_memory_mib=8192)
+    tasks = [t['Properties'] for t in items(runtime, 'AWS::ECS::TaskDefinition')]
+    assert any(t['Cpu'] == '2048' and t['Memory'] == '8192' for t in tasks)
+    runtime.resource_count_is('AWS::CloudWatch::Dashboard', 1)
+    assert 'API requests per minute' in json.dumps(items(runtime, 'AWS::CloudWatch::Dashboard'))
+
+
+@pytest.mark.parametrize('kwargs', [{'worker_cpu': True}, {'worker_cpu': 512, 'worker_memory_mib': 8192}, {'worker_memory_mib': 1}])
+def test_reject_worker_sizes(kwargs):
     with pytest.raises(ValueError):
         BackendConfig(**kwargs)

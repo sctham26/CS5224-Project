@@ -24,5 +24,7 @@
   "persist_uploads": true,
   "autoscaling_enabled": true,
   "api_max_tasks": 3,
-  "worker_max_tasks": 4
+  "worker_max_tasks": 4,
+  "worker_cpu": 2048,
+  "worker_memory_mib": 8192
 }

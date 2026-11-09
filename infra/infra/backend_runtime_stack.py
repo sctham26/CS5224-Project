@@ -60,7 +60,7 @@ class BackendRuntimeStack(Stack):
             "SPIP_TENANT_DB_CREDENTIALS": ecs.Secret.from_secrets_manager(tenant_secret),
         }
         self.api_task = ecs.FargateTaskDefinition(self, "ApiTask", cpu=256, memory_limit_mib=512)
-        self.worker_task = ecs.FargateTaskDefinition(self, "WorkerTask", cpu=512, memory_limit_mib=1024)
+        self.worker_task = ecs.FargateTaskDefinition(self, "WorkerTask", cpu=config.worker_cpu, memory_limit_mib=config.worker_memory_mib)
         import re
         for name, task, image, command in [
             ("api", self.api_task, config.api_image,
@@ -136,9 +136,9 @@ class BackendRuntimeStack(Stack):
             # Positive changes only: a smaller backlog must never stop busy workers.
             worker_capacity.scale_on_metric("Backlog", metric=queue.metric_approximate_number_of_messages_visible(
                 period=Duration.minutes(1), statistic="Maximum"),
-                scaling_steps=[scaling.ScalingInterval(upper=1, change=0), scaling.ScalingInterval(lower=1, change=1)],
+                scaling_steps=[scaling.ScalingInterval(upper=1, change=0), scaling.ScalingInterval(lower=1, upper=5, change=1), scaling.ScalingInterval(lower=5, change=3)],
                 adjustment_type=scaling.AdjustmentType.CHANGE_IN_CAPACITY,
-                evaluation_periods=2, datapoints_to_alarm=2, cooldown=Duration.minutes(2))
+                evaluation_periods=1, datapoints_to_alarm=1, cooldown=Duration.minutes(1))
             # Conservative scale-in without touching backend code. Missing metrics do
             # not count as an empty queue; include leased and delayed work as well.
             outstanding = cloudwatch.MathExpression(expression="FILL(visible, 1) + FILL(inflight, 1) + FILL(delayed, 1)",
@@ -179,7 +179,11 @@ class BackendRuntimeStack(Stack):
                                 authorizer=authorizer, authorization_scopes=list(config.authorization_scopes))
         # Operational visibility is independent of scaling policies.
         dashboard = cloudwatch.Dashboard(self, "OperationsDashboard", dashboard_name="spip-sandbox")
+        CfnOutput(self, "DashboardUrl", value=f"https://{self.region}.console.aws.amazon.com/cloudwatch/home?region={self.region}#dashboards/dashboard/spip-sandbox")
         dashboard.add_widgets(
+            cloudwatch.GraphWidget(title="API requests per minute", left=[cloudwatch.Metric(namespace="AWS/ApiGateway", metric_name="Count", dimensions_map={"ApiId": self.api.api_id}, statistic="Sum", period=Duration.minutes(1))]),
+            cloudwatch.GraphWidget(title="API 4xx / 5xx", left=[cloudwatch.Metric(namespace="AWS/ApiGateway", metric_name=name, dimensions_map={"ApiId": self.api.api_id}, statistic="Sum", period=Duration.minutes(1)) for name in ("4xx", "5xx")]),
+            cloudwatch.GraphWidget(title="API and worker memory percent", left=[api_service.metric_memory_utilization(), self.worker_service.metric_memory_utilization()]),
             cloudwatch.GraphWidget(title="API and worker CPU", left=[api_service.metric_cpu_utilization(), self.worker_service.metric_cpu_utilization()]),
             cloudwatch.GraphWidget(title="Queue backlog and age", left=[queue.metric_approximate_number_of_messages_visible()], right=[queue.metric_approximate_age_of_oldest_message()]),
             cloudwatch.GraphWidget(title="ALB response time", left=[balancer.metric_target_response_time(statistic="p95")]),

@@ -12,6 +12,8 @@ class BackendConfig:
     autoscaling_enabled: bool = False
     api_max_tasks: int = 3
     worker_max_tasks: int = 4
+    worker_cpu: int = 512
+    worker_memory_mib: int = 1024
     api_requests_per_target: int = 300
     api_cpu_target_percent: int = 60
     visibility_seconds: int = 900
@@ -41,6 +43,9 @@ class BackendConfig:
         ]:
             if type(value) is not int or not low <= value <= high:
                 raise ValueError(f"Invalid {name}")
+        sizes = {512: range(1024, 4097, 1024), 1024: range(2048, 8193, 1024), 2048: range(4096, 16385, 1024), 4096: range(8192, 30721, 1024)}
+        if type(self.worker_cpu) is not int or type(self.worker_memory_mib) is not int or self.worker_memory_mib not in sizes.get(self.worker_cpu, ()):
+            raise ValueError("Unsupported worker CPU/memory combination")
         if type(self.persist_uploads) is not bool:
             raise ValueError("persist_uploads must be a JSON boolean")
         if type(self.multi_az) is not bool:
