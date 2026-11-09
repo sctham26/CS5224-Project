@@ -166,8 +166,8 @@ def test_autoscaling_is_independent_bounded_and_drains_safely():
     # Drained alarm reacts in ~5 minutes (was 15) but still debounced across datapoints.
     drained = next(a["Properties"] for a in items(runtime, "AWS::CloudWatch::Alarm") if a["Properties"]["EvaluationPeriods"] == 5)
     assert drained["DatapointsToAlarm"] == 5 and drained["Threshold"] == 0
-    assert "ApproximateNumberOfMessagesNotVisible" in json.dumps(drained)
-    assert "ApproximateNumberOfMessagesDelayed" in json.dumps(drained)
+    assert "InFlight" in json.dumps(drained)
+    assert "Delayed" in json.dumps(drained)
 
 
 def test_autoscaling_opt_out_has_no_scaling_resources():

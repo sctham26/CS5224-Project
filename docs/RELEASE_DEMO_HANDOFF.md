@@ -11,3 +11,5 @@ Backend pushes must use the updated pinned reusable cloud workflow. Each run rec
 ## New release provenance
 
 Backend source: be811685ef57de125ec60efdde74a8dfa233eb3c. ECR digest: sha256:783dfcb73834f21846ac602eaab474ebc6c5baff3531b566a98dc77b96b10ce1. Release run: https://github.com/sctham26/CS5224-Project/actions/runs/42655656319 . Sandbox image defaults are refreshed to this release; future automated releases still use live stack parameters and run artifacts as authority. PR #4 was refreshed with the DLQ guard and remains an unmerged proposal for additional dispatch/ack improvements.
+
+The zero-worker smoke test exposed delayed native SQS metrics after dormancy: a queued message did not promptly trigger scale-out. A one-minute EventBridge/Lambda sampler now reads queue attributes and publishes Visible/InFlight/Delayed under SPIP/Scaling. Both scale-out and drain decisions use these fresh metrics. Missing/failed reads publish nothing, never fabricated zero. Native SQS dashboard metrics remain available. This adds a small scheduled Lambda/custom-metric cost and does not constitute a strict startup SLA.

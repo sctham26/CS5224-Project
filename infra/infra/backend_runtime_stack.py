@@ -142,11 +142,24 @@ class BackendRuntimeStack(Stack):
                 scale_out_cooldown=Duration.seconds(60), scale_in_cooldown=Duration.minutes(2))
             api_capacity.scale_on_cpu_utilization("Cpu", target_utilization_percent=config.api_cpu_target_percent,
                 scale_out_cooldown=Duration.seconds(60), scale_in_cooldown=Duration.minutes(2))
+            from pathlib import Path
+            from aws_cdk import aws_lambda as lambda_, aws_iam as iam, aws_events as events, aws_events_targets as targets
+            sampler = lambda_.Function(self, "QueueMetricSampler", runtime=lambda_.Runtime.PYTHON_3_12,
+                handler="handler.handler", code=lambda_.Code.from_asset(str(Path(__file__).resolve().parents[2] / "backend_cloud" / "scaling")),
+                timeout=Duration.seconds(25), memory_size=128,
+                environment={"QUEUE_URL": data.queue.queue_url})
+            sampler.add_to_role_policy(iam.PolicyStatement(actions=["sqs:GetQueueAttributes"], resources=[data.queue.queue_arn]))
+            sampler.add_to_role_policy(iam.PolicyStatement(actions=["cloudwatch:PutMetricData"], resources=["*"],
+                conditions={"StringEquals": {"cloudwatch:namespace": "SPIP/Scaling"}}))
+            events.Rule(self, "QueueMetricSchedule", schedule=events.Schedule.rate(Duration.minutes(1)),
+                targets=[targets.LambdaFunction(sampler)])
+            def queue_depth(name):
+                return cloudwatch.Metric(namespace="SPIP/Scaling", metric_name=name,
+                    dimensions_map={"Queue": "backend-jobs"}, statistic="Maximum", period=Duration.minutes(1))
             worker_capacity = self.worker_service.auto_scale_task_count(
                 min_capacity=0, max_capacity=config.worker_max_tasks)
             # Positive changes only: a smaller backlog must never stop busy workers.
-            worker_capacity.scale_on_metric("Backlog", metric=queue.metric_approximate_number_of_messages_visible(
-                period=Duration.minutes(1), statistic="Maximum"),
+            worker_capacity.scale_on_metric("Backlog", metric=queue_depth("Visible"),
                 scaling_steps=[scaling.ScalingInterval(upper=1, change=0), scaling.ScalingInterval(lower=1, upper=5, change=1), scaling.ScalingInterval(lower=5, change=3)],
                 adjustment_type=scaling.AdjustmentType.CHANGE_IN_CAPACITY,
                 evaluation_periods=1, datapoints_to_alarm=1, cooldown=Duration.minutes(1))
@@ -154,9 +167,9 @@ class BackendRuntimeStack(Stack):
             # not count as an empty queue; include leased and delayed work as well.
             outstanding = cloudwatch.MathExpression(expression="FILL(visible, 1) + FILL(inflight, 1) + FILL(delayed, 1)",
                 period=Duration.minutes(1), using_metrics={
-                    "visible": queue.metric_approximate_number_of_messages_visible(statistic="Maximum"),
-                    "inflight": queue.metric_approximate_number_of_messages_not_visible(statistic="Maximum"),
-                    "delayed": queue.metric_approximate_number_of_messages_delayed(statistic="Maximum"),
+                    "visible": queue_depth("Visible"),
+                    "inflight": queue_depth("InFlight"),
+                    "delayed": queue_depth("Delayed"),
                 })
             drained_action = scaling.StepScalingAction(self, "WorkerDrainedAction",
                 scaling_target=worker_capacity.node.find_child("Target"),
