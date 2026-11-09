@@ -42,6 +42,16 @@ def main():
         raise ValueError("Unexpected image repository")
     digest = metadata["image"][len(repository):]
     payload = {"image_digest": digest, "source_sha": metadata["backend_commit"], "release_id": args.release_id}
+    # Operator infrastructure releases share the same stack as image releases.
+    # Wait for an in-progress update instead of immediately failing a valid push.
+    wait_deadline = time.monotonic() + 600
+    while True:
+        current = aws("cloudformation", "describe-stacks", "--stack-name", "BackendRuntimeStack")["Stacks"][0]["StackStatus"]
+        if not current.endswith("IN_PROGRESS"):
+            break
+        if time.monotonic() >= wait_deadline:
+            raise SystemExit("Runtime remains busy after ten minutes; retry this release later")
+        time.sleep(15)
     with tempfile.TemporaryDirectory() as directory:
         result_path = Path(directory) / "response.json"
         response = aws("lambda", "invoke", "--function-name", "spip-backend-release",
