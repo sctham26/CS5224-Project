@@ -92,11 +92,22 @@ class BackendRuntimeStack(Stack):
         key.grant_decrypt(self.api_task.execution_role)
         key.grant_decrypt(self.worker_task.execution_role)
         public_bucket.grant_read(self.worker_task.task_role)
-        tenant_bucket.grant_read(self.api_task.task_role, "tenants/*/uploads/*")
-        tenant_bucket.grant_put(self.api_task.task_role, "tenants/*/uploads/*")
-        tenant_bucket.grant_read(self.api_task.task_role, "tenants/*/jobs/*")
-        tenant_bucket.grant_read(self.worker_task.task_role, "tenants/*/uploads/*")
-        tenant_bucket.grant_put(self.worker_task.task_role, "tenants/*/jobs/*")
+        # Tenant-data access is granted explicitly rather than through
+        # Bucket.grant_read/grant_put, because those always attach an
+        # unscoped s3:ListBucket on the whole bucket. A shared task role
+        # that can ListBucket without an s3:prefix condition can enumerate
+        # every tenant's directory names under tenants/ (a cross-tenant
+        # metadata leak), even though object reads are prefix-scoped and the
+        # backend additionally enforces owns_upload_key + Postgres RLS.
+        # Object Get/Put keep the exact prefixes used before; only the
+        # ability to LIST across tenants is removed.
+        self._grant_tenant_object_access(
+            tenant_bucket, key,
+            api_read=["tenants/*/uploads/*", "tenants/*/jobs/*"],
+            api_write=["tenants/*/uploads/*"],
+            worker_read=["tenants/*/uploads/*"],
+            worker_write=["tenants/*/jobs/*"],
+        )
         queue.grant_send_messages(self.api_task.task_role)
         queue.grant_consume_messages(self.worker_task.task_role)
 
@@ -206,3 +217,41 @@ class BackendRuntimeStack(Stack):
         CfnOutput(self, "ApiServiceArn", value=self.api_service.service_arn)
         CfnOutput(self, "WorkerServiceArn", value=self.worker_service.service_arn)
         CfnOutput(self, "ClusterName", value=data.cluster.cluster_name)
+
+    def _grant_tenant_object_access(self, tenant_bucket, key, *, api_read, api_write, worker_read, worker_write):
+        """Grant object Get/Put on the given tenant prefixes and a single
+        prefix-constrained ListBucket, so no task role can list across tenants."""
+        from aws_cdk import aws_iam as iam
+        bucket_arn = tenant_bucket.bucket_arn
+
+        def obj_arns(prefixes):
+            return [f"{bucket_arn}/{p}" for p in prefixes]
+
+        grants = [
+            (self.api_task.task_role, api_read, api_write),
+            (self.worker_task.task_role, worker_read, worker_write),
+        ]
+        for role, read_prefixes, write_prefixes in grants:
+            all_prefixes = sorted(set(read_prefixes) | set(write_prefixes))
+            if read_prefixes:
+                role.add_to_principal_policy(iam.PolicyStatement(
+                    actions=["s3:GetObject*"],
+                    resources=obj_arns(read_prefixes),
+                ))
+            if write_prefixes:
+                role.add_to_principal_policy(iam.PolicyStatement(
+                    actions=[
+                        "s3:PutObject", "s3:PutObjectLegalHold",
+                        "s3:PutObjectRetention", "s3:PutObjectTagging",
+                        "s3:PutObjectVersionTagging", "s3:Abort*",
+                    ],
+                    resources=obj_arns(write_prefixes),
+                ))
+            # One bucket-level List, constrained to the agreed prefixes only.
+            role.add_to_principal_policy(iam.PolicyStatement(
+                actions=["s3:ListBucket"],
+                resources=[bucket_arn],
+                conditions={"StringLike": {"s3:prefix": all_prefixes}},
+            ))
+            # Reading encrypted objects requires the data key.
+            key.grant_decrypt(role)

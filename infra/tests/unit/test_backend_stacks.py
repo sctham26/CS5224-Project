@@ -180,3 +180,55 @@ def test_large_worker_resources_and_dashboard():
 def test_reject_worker_sizes(kwargs):
     with pytest.raises(ValueError):
         BackendConfig(**kwargs)
+
+
+def test_task_roles_cannot_list_across_tenants():
+    """Cloud-config isolation guard (BACKEND_CLOUD_CONTRACT item 183):
+    a shared task role may read/write only its tenant's object prefixes and
+    must never hold an unconstrained s3:ListBucket on the tenant bucket, which
+    would let it enumerate other tenants' directory names under tenants/."""
+    _, runtime = stacks(runtime=True)
+    task_policies = [
+        r for name, r in runtime.find_resources("AWS::IAM::Policy").items()
+        if "TaskRole" in name and "ExecutionRole" not in name
+    ]
+    assert task_policies, "expected API and Worker task-role policies"
+
+    def is_tenant_resource(st):
+        return "TenantData" in json.dumps(st.get("Resource"))
+
+    list_statements = []
+    for policy in task_policies:
+        for st in policy["Properties"]["PolicyDocument"]["Statement"]:
+            actions = st.get("Action")
+            actions = actions if isinstance(actions, list) else [actions]
+            # List/enumerate actions on the TENANT bucket only. The shared
+            # PublicData bucket is not tenant-partitioned, so listing it is
+            # not a cross-tenant leak and is intentionally left unscoped.
+            if any(a in ("s3:ListBucket", "s3:List*", "s3:*") for a in actions) and is_tenant_resource(st):
+                list_statements.append(st)
+
+    assert list_statements, "task roles should retain a (scoped) tenant-bucket ListBucket"
+    for st in list_statements:
+        condition = st.get("Condition") or {}
+        prefixes = condition.get("StringLike", {}).get("s3:prefix")
+        assert prefixes, (
+            "every tenant-bucket List must be constrained by s3:prefix; "
+            "an unscoped ListBucket leaks cross-tenant directory names"
+        )
+        # Prefixes stay inside the agreed tenant layout.
+        for p in (prefixes if isinstance(prefixes, list) else [prefixes]):
+            assert p.startswith("tenants/"), p
+
+    # Object access remains confined to tenant-scoped prefixes (no bare bucket
+    # root), so reads/writes cannot escape the tenants/ hierarchy either.
+    policy_json = json.dumps([p["Properties"]["PolicyDocument"] for p in task_policies])
+    assert "s3:GetObject*" in policy_json
+    for st in (s for p in task_policies for s in p["Properties"]["PolicyDocument"]["Statement"]):
+        actions = st.get("Action")
+        actions = actions if isinstance(actions, list) else [actions]
+        if any(a.startswith("s3:GetObject") or a.startswith("s3:PutObject") for a in actions):
+            resources = st.get("Resource")
+            resources = resources if isinstance(resources, list) else [resources]
+            assert all("tenants/" in json.dumps(r) or "PublicData" in json.dumps(r)
+                       for r in resources), st
