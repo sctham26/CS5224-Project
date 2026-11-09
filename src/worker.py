@@ -247,10 +247,11 @@ def reconcile_dlq(dlq_url: str, store: JobStore, client=None) -> int:
                 client.delete_message(QueueUrl=dlq_url, ReceiptHandle=message["ReceiptHandle"])
                 continue
             job = store.get(envelope["tenant_id"], envelope["job_id"])
-            if job is not None and job.status not in (SUCCEEDED, FAILED):
-                store.finish(
-                    job, FAILED, result=None, error="retries exhausted (dead-letter queue)"
-                )
+            if job is None or job.status not in (SUCCEEDED, FAILED):
+                # A DLQ receipt is not proof that the logical job failed: another
+                # delivery may still be processing it. Retain for operator review.
+                log.warning("retain non-terminal or unknown DLQ job %s", envelope["job_id"])
+                return reconciled
             client.delete_message(QueueUrl=dlq_url, ReceiptHandle=message["ReceiptHandle"])
             reconciled += 1
     return reconciled
