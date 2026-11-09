@@ -144,15 +144,28 @@ def test_autoscaling_is_independent_bounded_and_drains_safely():
     targets = items(runtime, "AWS::ApplicationAutoScaling::ScalableTarget")
     assert sorted(t["Properties"]["MaxCapacity"] for t in targets) == [3, 4]
     assert all("DesiredCount" not in s["Properties"] for s in items(runtime, "AWS::ECS::Service"))
-    assert all(t["Properties"]["MinCapacity"] == 1 for t in targets)
+    # API keeps a warm floor of 1; the worker scales to zero when the queue drains.
+    assert sorted(t["Properties"]["MinCapacity"] for t in targets) == [0, 1]
+    api_target = next(t for t in targets if t["Properties"]["MaxCapacity"] == 3)
+    worker_target = next(t for t in targets if t["Properties"]["MaxCapacity"] == 4)
+    assert api_target["Properties"]["MinCapacity"] == 1
+    assert worker_target["Properties"]["MinCapacity"] == 0
     policies = items(runtime, "AWS::ApplicationAutoScaling::ScalingPolicy")
     tracking = [p["Properties"]["TargetTrackingScalingPolicyConfiguration"] for p in policies if p["Properties"]["PolicyType"] == "TargetTrackingScaling"]
     assert {p["PredefinedMetricSpecification"]["PredefinedMetricType"] for p in tracking} == {"ECSServiceAverageCPUUtilization", "ALBRequestCountPerTarget"}
+    # Shorter scale-in cooldown (2 min) so freed capacity is released sooner.
+    assert all(p["ScaleInCooldown"] == 120 and p["ScaleOutCooldown"] == 60 for p in tracking)
     step = [p["Properties"]["StepScalingPolicyConfiguration"] for p in policies if p["Properties"]["PolicyType"] == "StepScaling"]
     assert len(step) == 2
-    assert all(s["ScalingAdjustment"] > 0 for p in step for s in p["StepAdjustments"])
-    drained = next(a["Properties"] for a in items(runtime, "AWS::CloudWatch::Alarm") if a["Properties"]["EvaluationPeriods"] == 15)
-    assert drained["DatapointsToAlarm"] == 15 and drained["Threshold"] == 0
+    # Backlog policy only grows capacity; the drained policy sets exact capacity to 0.
+    backlog = next(s for s in step if s["AdjustmentType"] == "ChangeInCapacity")
+    drained_policy = next(s for s in step if s["AdjustmentType"] == "ExactCapacity")
+    assert all(a["ScalingAdjustment"] > 0 for a in backlog["StepAdjustments"])
+    assert all(a["ScalingAdjustment"] == 0 for a in drained_policy["StepAdjustments"])
+    assert drained_policy["Cooldown"] == 300
+    # Drained alarm reacts in ~5 minutes (was 15) but still debounced across datapoints.
+    drained = next(a["Properties"] for a in items(runtime, "AWS::CloudWatch::Alarm") if a["Properties"]["EvaluationPeriods"] == 5)
+    assert drained["DatapointsToAlarm"] == 5 and drained["Threshold"] == 0
     assert "ApproximateNumberOfMessagesNotVisible" in json.dumps(drained)
     assert "ApproximateNumberOfMessagesDelayed" in json.dumps(drained)
 

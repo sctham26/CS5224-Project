@@ -139,11 +139,11 @@ class BackendRuntimeStack(Stack):
             api_capacity = api_service.auto_scale_task_count(min_capacity=1, max_capacity=config.api_max_tasks)
             api_capacity.scale_on_request_count("Requests", target_group=target_group,
                 requests_per_target=config.api_requests_per_target,
-                scale_out_cooldown=Duration.seconds(60), scale_in_cooldown=Duration.minutes(5))
+                scale_out_cooldown=Duration.seconds(60), scale_in_cooldown=Duration.minutes(2))
             api_capacity.scale_on_cpu_utilization("Cpu", target_utilization_percent=config.api_cpu_target_percent,
-                scale_out_cooldown=Duration.seconds(60), scale_in_cooldown=Duration.minutes(5))
+                scale_out_cooldown=Duration.seconds(60), scale_in_cooldown=Duration.minutes(2))
             worker_capacity = self.worker_service.auto_scale_task_count(
-                min_capacity=1, max_capacity=config.worker_max_tasks)
+                min_capacity=0, max_capacity=config.worker_max_tasks)
             # Positive changes only: a smaller backlog must never stop busy workers.
             worker_capacity.scale_on_metric("Backlog", metric=queue.metric_approximate_number_of_messages_visible(
                 period=Duration.minutes(1), statistic="Maximum"),
@@ -160,11 +160,11 @@ class BackendRuntimeStack(Stack):
                 })
             drained_action = scaling.StepScalingAction(self, "WorkerDrainedAction",
                 scaling_target=worker_capacity.node.find_child("Target"),
-                adjustment_type=scaling.AdjustmentType.EXACT_CAPACITY, cooldown=Duration.minutes(15))
-            drained_action.add_adjustment(upper_bound=0, adjustment=1)
+                adjustment_type=scaling.AdjustmentType.EXACT_CAPACITY, cooldown=Duration.minutes(5))
+            drained_action.add_adjustment(upper_bound=0, adjustment=0)
             drained_alarm = cloudwatch.Alarm(self, "WorkerDrainedAlarm", metric=outstanding,
                 threshold=0, comparison_operator=cloudwatch.ComparisonOperator.LESS_THAN_OR_EQUAL_TO_THRESHOLD,
-                evaluation_periods=15, datapoints_to_alarm=15,
+                evaluation_periods=5, datapoints_to_alarm=5,
                 treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING)
             drained_alarm.add_alarm_action(alarm_actions.ApplicationScalingAction(drained_action))
         link = gateway.VpcLink(self, "VpcLink", vpc=data.vpc, security_groups=[link_sg],
