@@ -18,6 +18,6 @@ jobs:
   deploy:
     needs: guard
     if: always() && !failure() && !cancelled()
-    uses: sctham26/CS5224-Project/.github/workflows/backend-release.yml@4404312255d25fe1039dfa41c634d2d5ba6ae0c7
+    uses: sctham26/CS5224-Project/.github/workflows/backend-release.yml@50bbd81203c61d80f37e973d25a1fdc51eb8fd96
     with:
-      cloud_ref: 4404312255d25fe1039dfa41c634d2d5ba6ae0c7
+      cloud_ref: 50bbd81203c61d80f37e973d25a1fdc51eb8fd96

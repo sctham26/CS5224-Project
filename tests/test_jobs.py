@@ -199,7 +199,7 @@ def test_worker_reports_unreadable_upload_as_failed(pipeline):
     assert store.get("tenant_a", job.job_id).error
 
 
-def test_dlq_reconciliation_marks_job_failed(pipeline):
+def test_dlq_reconciliation_retains_nonterminal_job(pipeline):
     store, s3, _ = pipeline
     body = _create(client).json()
     job = store.get("tenant_a", body["job_id"])
@@ -215,9 +215,9 @@ def test_dlq_reconciliation_marks_job_failed(pipeline):
             self.deleted.append(ReceiptHandle)
 
     client_sqs = FakeSQS()
-    assert worker.reconcile_dlq("dlq", store, client=client_sqs) == 1
-    assert store.get("tenant_a", job.job_id).status == FAILED
-    assert client_sqs.deleted == ["rh-1"]
+    assert worker.reconcile_dlq("dlq", store, client=client_sqs) == 0
+    assert store.get("tenant_a", job.job_id).status == job.status
+    assert client_sqs.deleted == []
 
 
 def test_job_queue_sends_envelope_when_client_injected():
