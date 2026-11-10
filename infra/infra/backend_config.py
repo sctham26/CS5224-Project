@@ -27,6 +27,7 @@ class BackendConfig:
     jwt_audience: tuple[str, ...] = ()
     authorization_scopes: tuple[str, ...] = ()
     allowed_origins: tuple[str, ...] = ()
+    alert_emails: tuple[str, ...] = ()
 
     def __post_init__(self):
         if not re.fullmatch(r"\d+\.\d+", self.postgres_version):
@@ -59,6 +60,9 @@ class BackendConfig:
                 raise ValueError(f"Invalid {name}")
         if type(self.job_lease_seconds) is not int or not 1 <= self.job_lease_seconds <= self.visibility_seconds - 30:
             raise ValueError("job_lease_seconds must leave at least 30 seconds before queue visibility expires")
+        for email in self.alert_emails:
+            if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
+                raise ValueError("alert_emails must contain valid email addresses")
         for origin in self.allowed_origins:
             parsed = urlsplit(origin)
             if parsed.scheme != "https" or not parsed.netloc or parsed.path not in ("", "/") or parsed.query or parsed.fragment or parsed.username:
@@ -79,7 +83,7 @@ class BackendConfig:
     @classmethod
     def from_dict(cls, data):
         data = dict(data)
-        for key in ("worker_command", "jwt_audience", "authorization_scopes", "allowed_origins"):
+        for key in ("worker_command", "jwt_audience", "authorization_scopes", "allowed_origins", "alert_emails"):
             if key in data:
                 if not isinstance(data[key], list) or not all(isinstance(x, str) for x in data[key]):
                     raise ValueError(f"{key} must be a JSON string array")

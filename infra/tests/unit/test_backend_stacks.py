@@ -245,3 +245,31 @@ def test_task_roles_cannot_list_across_tenants():
             resources = resources if isinstance(resources, list) else [resources]
             assert all("tenants/" in json.dumps(r) or "PublicData" in json.dumps(r)
                        for r in resources), st
+
+
+def test_sampler_monitoring_and_admin_subscriptions():
+    _, runtime = stacks(runtime=True, autoscaling_enabled=True,
+                        alert_emails=("alex.jin@u.nus.edu", "auxane.baptiste@u.nus.edu"))
+    subscriptions = items(runtime, "AWS::SNS::Subscription")
+    assert {s["Properties"]["Endpoint"] for s in subscriptions} == {
+        "alex.jin@u.nus.edu", "auxane.baptiste@u.nus.edu"}
+    assert all(s["Properties"]["Protocol"] == "email" for s in subscriptions)
+    alarms = runtime.find_resources("AWS::CloudWatch::Alarm")
+    monitored = [v["Properties"] for k, v in alarms.items() if k.startswith("QueueSampler")]
+    assert len(monitored) == 3
+    for alarm in monitored:
+        assert alarm["AlarmActions"] == alarm["OKActions"]
+        assert alarm["AlarmActions"] == [subscriptions[0]["Properties"]["TopicArn"]]
+    missing = next(v["Properties"] for k, v in alarms.items() if k.startswith("QueueSamplerMissing"))
+    assert missing["EvaluationPeriods"] == missing["DatapointsToAlarm"] == 5
+    assert missing["TreatMissingData"] == "breaching"
+    metrics = missing["Metrics"]
+    assert {m["MetricStat"]["Metric"]["MetricName"] for m in metrics if "MetricStat" in m} == {"Visible", "InFlight", "Delayed"}
+    assert all(m["MetricStat"]["Period"] == 60 for m in metrics if "MetricStat" in m)
+
+
+def test_alert_email_configuration_rejects_invalid_values():
+    with pytest.raises(ValueError):
+        BackendConfig.from_dict({"alert_emails": "admin@example.com"})
+    with pytest.raises(ValueError):
+        BackendConfig(alert_emails=("invalid",))

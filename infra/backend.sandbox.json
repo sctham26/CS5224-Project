@@ -26,5 +26,9 @@
   "api_max_tasks": 3,
   "worker_max_tasks": 4,
   "worker_cpu": 2048,
-  "worker_memory_mib": 8192
+  "worker_memory_mib": 8192,
+  "alert_emails": [
+    "alex.jin@u.nus.edu",
+    "auxane.baptiste@u.nus.edu"
+  ]
 }

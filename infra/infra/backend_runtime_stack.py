@@ -215,6 +215,30 @@ class BackendRuntimeStack(Stack):
         )
         from aws_cdk import aws_sns as sns
         alerts = sns.Topic(self, "OperationalAlerts", display_name="SPIP operational alerts")
+        from aws_cdk import aws_sns_subscriptions as subscriptions
+        for email in config.alert_emails:
+            alerts.add_subscription(subscriptions.EmailSubscription(email))
+        if config.autoscaling_enabled:
+            # An empty queue still emits zeros. Missing samples indicate a broken
+            # scheduler, invocation, or publishing path, not an idle workload.
+            missing_samples = cloudwatch.MathExpression(
+                expression="IF(FILL(visible, -1) < 0, 1, 0) + IF(FILL(inflight, -1) < 0, 1, 0) + IF(FILL(delayed, -1) < 0, 1, 0)",
+                period=Duration.minutes(1), using_metrics={
+                    "visible": queue_depth("Visible"),
+                    "inflight": queue_depth("InFlight"),
+                    "delayed": queue_depth("Delayed"),
+                })
+            for alarm_id, metric, periods, missing in [
+                ("QueueSamplerErrors", sampler.metric_errors(period=Duration.minutes(1), statistic="Sum"), 1, cloudwatch.TreatMissingData.NOT_BREACHING),
+                ("QueueSamplerThrottles", sampler.metric_throttles(period=Duration.minutes(1), statistic="Sum"), 1, cloudwatch.TreatMissingData.NOT_BREACHING),
+                ("QueueSamplerMissing", missing_samples, 5, cloudwatch.TreatMissingData.BREACHING),
+            ]:
+                alarm = cloudwatch.Alarm(self, alarm_id, metric=metric, threshold=1,
+                    comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+                    evaluation_periods=periods, datapoints_to_alarm=periods,
+                    treat_missing_data=missing)
+                alarm.add_alarm_action(alarm_actions.SnsAction(alerts))
+                alarm.add_ok_action(alarm_actions.SnsAction(alerts))
         for alarm_id, metric, threshold in [
             ("QueueAge", queue.metric_approximate_age_of_oldest_message(), 300),
             ("ApiErrors", balancer.metric_http_code_target(elb.HttpCodeTarget.TARGET_5XX_COUNT), 5),
