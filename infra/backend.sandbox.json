@@ -21,7 +21,7 @@
   "api_image": "825990809862.dkr.ecr.ap-southeast-1.amazonaws.com/spip-backend@sha256:783dfcb73834f21846ac602eaab474ebc6c5baff3531b566a98dc77b96b10ce1",
   "worker_image": "825990809862.dkr.ecr.ap-southeast-1.amazonaws.com/spip-backend@sha256:783dfcb73834f21846ac602eaab474ebc6c5baff3531b566a98dc77b96b10ce1",
   "job_lease_seconds": 840,
-  "persist_uploads": false,
+  "persist_uploads": true,
   "autoscaling_enabled": true,
   "api_max_tasks": 3,
   "worker_max_tasks": 4,
