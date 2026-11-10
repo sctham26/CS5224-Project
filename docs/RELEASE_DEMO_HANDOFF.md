@@ -22,3 +22,21 @@ The zero-worker smoke test exposed delayed native SQS metrics after dormancy: a 
 - This exercised the internal application pipeline, not a browser/Cognito login: the operator supplied a Principal directly. Public transport and missing/invalid-token rejection checks passed; authenticated browser acceptance and cross-tenant HTTP verification remain separate.
 - Native SQS metrics eventually woke the worker but were delayed. The new sampler was invoked successfully and published real queue counters; no faster end-to-end latency SLA is claimed from that invocation alone.
 - Backend 118 tests passed; refreshed PR #4 119 tests passed. Cloud 43 tests and release-capacity tests passed. Latest cloud GitHub checks passed.
+
+## Account recreation and tenant access — 2026-11-10
+
+A signed-in Alex account received HTTP 403 from `/entities`. Cognito currently
+identifies `alex.jin@u.nus.edu` as `39ca852c-3071-704e-d8ec-b0c10fe01998`;
+the previously provisioned subject was `e9caf58c-7091-7041-fd92-01ac1f99d708`.
+The old subject resolved to `spip-team`, while the current subject had no active
+membership. Cognito group assignment does not provision database membership.
+
+Recovery uses the existing operator-only `membership --sub <current-sub>
+--tenant spip-team` command. Verify the subject using Cognito before provisioning;
+never automatically grant tenants based only on email or group names. Recreating
+an account requires explicitly reprovisioning its new subject. This is a database
+access repair, not an image change.
+
+Frontend follow-up: `classifyApiError` currently maps both 401 and 403 to “Please
+sign in”. Distinguish invalid credentials (401) from missing tenant authorization
+(403), which requires an administrator rather than another login.
