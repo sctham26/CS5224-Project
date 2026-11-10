@@ -59,13 +59,38 @@ All operator tasks use the existing cluster/public task subnets and bootstrap SG
 
 ## Provisioning tenant membership
 
-A Cognito invitation creates an identity, not a tenant assignment. An operator first verifies the invited user's actual `sub` through Cognito and agrees the tenant with the project owner. Then run the Migration task/container using the explicit command:
+A Cognito invitation creates an identity, not a tenant assignment. Use the dedicated
+Membership task through the helper (requires a logged-in AWS operator profile):
 
-```json
-["membership", "--sub", "<verified Cognito UUID>", "--tenant", "<approved tenant ID>"]
+```bash
+python3 scripts/add_tenant_member.py --email michaelwijaya9841111@gmail.com --tenant spip-team --profile sandbox
 ```
 
-The supplied UUID/tenant are validated and SQL values are parameterized. The task uses the migration owner under the table's existing RLS context, not an application endpoint or a browser-selected tenant. Updating an existing membership changes its assignment; review the subject/tenant carefully before running it. No users or memberships are created automatically.
+Add `--dry-run` to resolve the Cognito subject and preview the assignment without
+writing. The helper rejects missing, disabled, or ambiguous users, validates the
+AWS account and tenant ID, resolves current CloudFormation outputs, runs the
+Membership container, and verifies its exit status. An existing assignment is
+replaced with the explicitly supplied tenant; it does not add a second tenant.
+
+For the AWS ECS console: select `MembershipTaskDefinitionArn` from
+BackendOperationsStack outputs, use the existing cluster, TaskSubnets and
+BootstrapSecurityGroupId, enable public IP, and override the Membership command:
+
+```json
+["--sub", "<verified Cognito UUID>", "--tenant", "<approved tenant ID>"]
+```
+
+The task entrypoint already includes `membership`; do not repeat it. Without
+arguments it only displays help. No image rebuild or database migration is needed
+for each new user. The task does not create a Cognito account or assign Cognito
+groups.
+
+This is operational separation: the dedicated task has its own task/execution
+roles and logs, receives only tenant credentials, and cannot select migrate/import
+through command arguments. It still uses the tenant migration database account;
+it is not yet a least-privilege membership-only database role. Restrict RunTask /
+PassRole access to trusted cloud operators. SQL values are parameterized and the
+existing membership RLS context is set for the supplied subject.
 
 ### Provisioned team memberships — 2026-10-25
 
@@ -118,3 +143,12 @@ Backend commit `e8a9f65d377bf6d5b1ac59f5c58afbfdc63d6971` changes the analysis c
 - All 107 backend tests passed inside the rebuilt Linux image with tests/fixtures mounted read-only. No SQL, dependency, route, authentication or membership changes are required by this backend source update.
 - The backend team's pinned README reports successful upload → S3 PUT → queued job → worker result, plus rejection of another tenant's upload key. These are teammate-reported results from the previous release, not a fresh cloud-module E2E run. Private entity isolation and group-based permissions remain separate acceptance items.
 - To roll back this release, restore image `825990809862.dkr.ecr.ap-southeast-1.amazonaws.com/spip-backend@sha256:b901b235279230cf21e90d670a12d67fd7d817255909fd9173dc33543e8335f6` in the sandbox config, review the full-context CDK diff and deploy runtime/operations. No database bootstrap or baseline import is needed.
+
+### Dedicated membership task verification — 2026-11-10
+
+`BackendOperationsStackMembershipTask4BF43EA4:1` is deployed. The email helper
+successfully resolved `michaelwijaya9841111@gmail.com` and re-applied its existing
+`spip-team` membership through the Membership container (task
+`36c46cc6fe0d4c94b36943e11b91d0dd`, exit code 0). This did not change the approved
+tenant assignment or grant a Cognito administrator group. CDK tests: 45 passed;
+identity-resolution tests also passed.
