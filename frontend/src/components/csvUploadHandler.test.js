@@ -217,7 +217,26 @@ describe('realCsvUploadHandler', () => {
         fetcher: vi.fn().mockResolvedValue({ ok: true }),
         baseUrl: '/api',
       })
-    ).rejects.toThrow(/Authentication is required/i)
+    ).rejects.toThrow('Your session could not be verified. Please sign out and sign in again.')
+  })
+
+  it('gives permission guidance for a 403 response', async () => {
+    const apiFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      text: async () => JSON.stringify({ detail: 'No active tenant membership' }),
+    })
+
+    await expect(
+      realCsvUploadHandler(makeFile(), {
+        entityId: 'A001',
+        reportingYear: 2024,
+        idempotencyKey: 'permission-key',
+        apiFetch,
+        fetcher: vi.fn().mockResolvedValue({ ok: true }),
+        baseUrl: '/api',
+      })
+    ).rejects.toThrow('Your account does not have permission to access this data. Please contact your administrator.')
   })
 
   it('reuses the same idempotency key on retry', async () => {

@@ -307,9 +307,7 @@ function PropertyComparison({ entities, entitiesLoading, entitiesError }) {
           <p className="api-error">
             {entitiesError.message}
           </p>
-          {entitiesError.type === 'auth' ? (
-            <p>Please sign in and retry.</p>
-          ) : (
+          {entitiesError.type === 'auth' || entitiesError.type === 'forbidden' ? null : (
             <p>Check that the Analytics API is running on port 8000.</p>
           )}
         </div>
