@@ -35,7 +35,7 @@ class RuntimeVerificationTests(unittest.TestCase):
     def test_both_services_must_use_stack_revisions_and_be_stable(self):
         outputs = {"ApiServiceArn": "service-api", "WorkerServiceArn": "service-worker",
                    "ApiTaskDefinitionArn": "api:4", "WorkerTaskDefinitionArn": "worker:4"}
-        result = {"services": [{"serviceArn": arn, "taskDefinition": task, "runningCount": 1,
+        result = {"services": [{"serviceArn": arn, "taskDefinition": task, "runningCount": 1, "desiredCount": 1,
             "pendingCount": 0, "deployments": [{"rolloutState": "COMPLETED"}]}
             for arn, task in [("service-api", "api:4"), ("service-worker", "worker:4")]]}
         release.verify_services(result, outputs)

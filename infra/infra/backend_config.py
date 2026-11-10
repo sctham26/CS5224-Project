@@ -12,6 +12,8 @@ class BackendConfig:
     autoscaling_enabled: bool = False
     api_max_tasks: int = 3
     worker_max_tasks: int = 4
+    worker_cpu: int = 512
+    worker_memory_mib: int = 1024
     api_requests_per_target: int = 300
     api_cpu_target_percent: int = 60
     visibility_seconds: int = 900
@@ -25,6 +27,7 @@ class BackendConfig:
     jwt_audience: tuple[str, ...] = ()
     authorization_scopes: tuple[str, ...] = ()
     allowed_origins: tuple[str, ...] = ()
+    alert_emails: tuple[str, ...] = ()
 
     def __post_init__(self):
         if not re.fullmatch(r"\d+\.\d+", self.postgres_version):
@@ -41,6 +44,9 @@ class BackendConfig:
         ]:
             if type(value) is not int or not low <= value <= high:
                 raise ValueError(f"Invalid {name}")
+        sizes = {512: range(1024, 4097, 1024), 1024: range(2048, 8193, 1024), 2048: range(4096, 16385, 1024), 4096: range(8192, 30721, 1024)}
+        if type(self.worker_cpu) is not int or type(self.worker_memory_mib) is not int or self.worker_memory_mib not in sizes.get(self.worker_cpu, ()):
+            raise ValueError("Unsupported worker CPU/memory combination")
         if type(self.persist_uploads) is not bool:
             raise ValueError("persist_uploads must be a JSON boolean")
         if type(self.multi_az) is not bool:
@@ -54,6 +60,9 @@ class BackendConfig:
                 raise ValueError(f"Invalid {name}")
         if type(self.job_lease_seconds) is not int or not 1 <= self.job_lease_seconds <= self.visibility_seconds - 30:
             raise ValueError("job_lease_seconds must leave at least 30 seconds before queue visibility expires")
+        for email in self.alert_emails:
+            if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
+                raise ValueError("alert_emails must contain valid email addresses")
         for origin in self.allowed_origins:
             parsed = urlsplit(origin)
             if parsed.scheme != "https" or not parsed.netloc or parsed.path not in ("", "/") or parsed.query or parsed.fragment or parsed.username:
@@ -74,7 +83,7 @@ class BackendConfig:
     @classmethod
     def from_dict(cls, data):
         data = dict(data)
-        for key in ("worker_command", "jwt_audience", "authorization_scopes", "allowed_origins"):
+        for key in ("worker_command", "jwt_audience", "authorization_scopes", "allowed_origins", "alert_emails"):
             if key in data:
                 if not isinstance(data[key], list) or not all(isinstance(x, str) for x in data[key]):
                     raise ValueError(f"{key} must be a JSON string array")

@@ -20,7 +20,7 @@ def verify_services(result, outputs):
             {s["serviceArn"] for s in services} != set(expected)):
         raise ValueError("Could not verify both application services")
     for service in services:
-        if (service["runningCount"] != 1 or service["pendingCount"] != 0 or
+        if (service["desiredCount"] < (1 if service["serviceArn"] == outputs["ApiServiceArn"] else 0) or service["runningCount"] != service["desiredCount"] or service["pendingCount"] != 0 or
                 len(service["deployments"]) != 1 or service["deployments"][0]["rolloutState"] != "COMPLETED"):
             raise ValueError("Application service is not stable")
         # Stack parameters were checked against the requested digest. Each service
@@ -42,6 +42,16 @@ def main():
         raise ValueError("Unexpected image repository")
     digest = metadata["image"][len(repository):]
     payload = {"image_digest": digest, "source_sha": metadata["backend_commit"], "release_id": args.release_id}
+    # Operator infrastructure releases share the same stack as image releases.
+    # Wait for an in-progress update instead of immediately failing a valid push.
+    wait_deadline = time.monotonic() + 600
+    while True:
+        current = aws("cloudformation", "describe-stacks", "--stack-name", "BackendRuntimeStack")["Stacks"][0]["StackStatus"]
+        if not current.endswith("IN_PROGRESS"):
+            break
+        if time.monotonic() >= wait_deadline:
+            raise SystemExit("Runtime remains busy after ten minutes; retry this release later")
+        time.sleep(15)
     with tempfile.TemporaryDirectory() as directory:
         result_path = Path(directory) / "response.json"
         response = aws("lambda", "invoke", "--function-name", "spip-backend-release",

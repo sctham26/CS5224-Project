@@ -49,7 +49,7 @@ jobs:
         working-directory: infra
       - run: uv run --locked pytest -q
         working-directory: infra
-      - run: python -m unittest -v tests.test_deploy_frontend tests.test_verify_frontend tests.test_frontend_source tests.test_backend_release_guard
+      - run: python -m unittest -v tests.test_deploy_frontend tests.test_verify_frontend tests.test_frontend_source tests.test_backend_release_guard tests.test_release_capacity tests.test_load_test
       - run: npm ci
         working-directory: infra
       - run: npx cdk synth --strict --quiet

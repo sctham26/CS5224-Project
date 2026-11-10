@@ -1,6 +1,6 @@
 """Optional real-image API/worker runtime; JWT-protected routes only."""
 from aws_cdk import (
-    CfnOutput, CfnParameter, Duration, RemovalPolicy, Stack,
+    CfnOutput, CfnParameter, Duration, RemovalPolicy, Stack, Fn,
     aws_apigatewayv2 as gateway, aws_apigatewayv2_authorizers as auth,
     aws_apigatewayv2_integrations as integrations, aws_ec2 as ec2,
     aws_ecs as ecs, aws_elasticloadbalancingv2 as elb, aws_logs as logs,
@@ -60,7 +60,7 @@ class BackendRuntimeStack(Stack):
             "SPIP_TENANT_DB_CREDENTIALS": ecs.Secret.from_secrets_manager(tenant_secret),
         }
         self.api_task = ecs.FargateTaskDefinition(self, "ApiTask", cpu=256, memory_limit_mib=512)
-        self.worker_task = ecs.FargateTaskDefinition(self, "WorkerTask", cpu=512, memory_limit_mib=1024)
+        self.worker_task = ecs.FargateTaskDefinition(self, "WorkerTask", cpu=config.worker_cpu, memory_limit_mib=config.worker_memory_mib)
         import re
         for name, task, image, command in [
             ("api", self.api_task, config.api_image,
@@ -92,11 +92,22 @@ class BackendRuntimeStack(Stack):
         key.grant_decrypt(self.api_task.execution_role)
         key.grant_decrypt(self.worker_task.execution_role)
         public_bucket.grant_read(self.worker_task.task_role)
-        tenant_bucket.grant_read(self.api_task.task_role, "tenants/*/uploads/*")
-        tenant_bucket.grant_put(self.api_task.task_role, "tenants/*/uploads/*")
-        tenant_bucket.grant_read(self.api_task.task_role, "tenants/*/jobs/*")
-        tenant_bucket.grant_read(self.worker_task.task_role, "tenants/*/uploads/*")
-        tenant_bucket.grant_put(self.worker_task.task_role, "tenants/*/jobs/*")
+        # Tenant-data access is granted explicitly rather than through
+        # Bucket.grant_read/grant_put, because those always attach an
+        # unscoped s3:ListBucket on the whole bucket. A shared task role
+        # that can ListBucket without an s3:prefix condition can enumerate
+        # every tenant's directory names under tenants/ (a cross-tenant
+        # metadata leak), even though object reads are prefix-scoped and the
+        # backend additionally enforces owns_upload_key + Postgres RLS.
+        # Object Get/Put keep the exact prefixes used before; only the
+        # ability to LIST across tenants is removed.
+        self._grant_tenant_object_access(
+            tenant_bucket, key,
+            api_read=["tenants/*/uploads/*", "tenants/*/jobs/*"],
+            api_write=["tenants/*/uploads/*"],
+            worker_read=["tenants/*/uploads/*"],
+            worker_write=["tenants/*/jobs/*"],
+        )
         queue.grant_send_messages(self.api_task.task_role)
         queue.grant_consume_messages(self.worker_task.task_role)
 
@@ -128,32 +139,45 @@ class BackendRuntimeStack(Stack):
             api_capacity = api_service.auto_scale_task_count(min_capacity=1, max_capacity=config.api_max_tasks)
             api_capacity.scale_on_request_count("Requests", target_group=target_group,
                 requests_per_target=config.api_requests_per_target,
-                scale_out_cooldown=Duration.seconds(60), scale_in_cooldown=Duration.minutes(5))
+                scale_out_cooldown=Duration.seconds(60), scale_in_cooldown=Duration.minutes(2))
             api_capacity.scale_on_cpu_utilization("Cpu", target_utilization_percent=config.api_cpu_target_percent,
-                scale_out_cooldown=Duration.seconds(60), scale_in_cooldown=Duration.minutes(5))
+                scale_out_cooldown=Duration.seconds(60), scale_in_cooldown=Duration.minutes(2))
+            from pathlib import Path
+            from aws_cdk import aws_lambda as lambda_, aws_iam as iam, aws_events as events, aws_events_targets as targets
+            sampler = lambda_.Function(self, "QueueMetricSampler", runtime=lambda_.Runtime.PYTHON_3_12,
+                handler="handler.handler", code=lambda_.Code.from_asset(str(Path(__file__).resolve().parents[2] / "backend_cloud" / "scaling")),
+                timeout=Duration.seconds(25), memory_size=128,
+                environment={"QUEUE_URL": data.queue.queue_url})
+            sampler.add_to_role_policy(iam.PolicyStatement(actions=["sqs:GetQueueAttributes"], resources=[data.queue.queue_arn]))
+            sampler.add_to_role_policy(iam.PolicyStatement(actions=["cloudwatch:PutMetricData"], resources=["*"],
+                conditions={"StringEquals": {"cloudwatch:namespace": "SPIP/Scaling"}}))
+            events.Rule(self, "QueueMetricSchedule", schedule=events.Schedule.rate(Duration.minutes(1)),
+                targets=[targets.LambdaFunction(sampler)])
+            def queue_depth(name):
+                return cloudwatch.Metric(namespace="SPIP/Scaling", metric_name=name,
+                    dimensions_map={"Queue": "backend-jobs"}, statistic="Maximum", period=Duration.minutes(1))
             worker_capacity = self.worker_service.auto_scale_task_count(
-                min_capacity=1, max_capacity=config.worker_max_tasks)
+                min_capacity=0, max_capacity=config.worker_max_tasks)
             # Positive changes only: a smaller backlog must never stop busy workers.
-            worker_capacity.scale_on_metric("Backlog", metric=queue.metric_approximate_number_of_messages_visible(
-                period=Duration.minutes(1), statistic="Maximum"),
-                scaling_steps=[scaling.ScalingInterval(upper=1, change=0), scaling.ScalingInterval(lower=1, change=1)],
+            worker_capacity.scale_on_metric("Backlog", metric=queue_depth("Visible"),
+                scaling_steps=[scaling.ScalingInterval(upper=1, change=0), scaling.ScalingInterval(lower=1, upper=5, change=1), scaling.ScalingInterval(lower=5, change=3)],
                 adjustment_type=scaling.AdjustmentType.CHANGE_IN_CAPACITY,
-                evaluation_periods=2, datapoints_to_alarm=2, cooldown=Duration.minutes(2))
+                evaluation_periods=1, datapoints_to_alarm=1, cooldown=Duration.minutes(1))
             # Conservative scale-in without touching backend code. Missing metrics do
             # not count as an empty queue; include leased and delayed work as well.
             outstanding = cloudwatch.MathExpression(expression="FILL(visible, 1) + FILL(inflight, 1) + FILL(delayed, 1)",
                 period=Duration.minutes(1), using_metrics={
-                    "visible": queue.metric_approximate_number_of_messages_visible(statistic="Maximum"),
-                    "inflight": queue.metric_approximate_number_of_messages_not_visible(statistic="Maximum"),
-                    "delayed": queue.metric_approximate_number_of_messages_delayed(statistic="Maximum"),
+                    "visible": queue_depth("Visible"),
+                    "inflight": queue_depth("InFlight"),
+                    "delayed": queue_depth("Delayed"),
                 })
             drained_action = scaling.StepScalingAction(self, "WorkerDrainedAction",
                 scaling_target=worker_capacity.node.find_child("Target"),
-                adjustment_type=scaling.AdjustmentType.EXACT_CAPACITY, cooldown=Duration.minutes(15))
-            drained_action.add_adjustment(upper_bound=0, adjustment=1)
+                adjustment_type=scaling.AdjustmentType.EXACT_CAPACITY, cooldown=Duration.minutes(5))
+            drained_action.add_adjustment(upper_bound=0, adjustment=0)
             drained_alarm = cloudwatch.Alarm(self, "WorkerDrainedAlarm", metric=outstanding,
                 threshold=0, comparison_operator=cloudwatch.ComparisonOperator.LESS_THAN_OR_EQUAL_TO_THRESHOLD,
-                evaluation_periods=15, datapoints_to_alarm=15,
+                evaluation_periods=5, datapoints_to_alarm=5,
                 treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING)
             drained_alarm.add_alarm_action(alarm_actions.ApplicationScalingAction(drained_action))
         link = gateway.VpcLink(self, "VpcLink", vpc=data.vpc, security_groups=[link_sg],
@@ -177,9 +201,97 @@ class BackendRuntimeStack(Stack):
                              (gateway.HttpMethod.GET, "/analysis/{entity_id}")]:
             self.api.add_routes(path=path, methods=[method], integration=integration,
                                 authorizer=authorizer, authorization_scopes=list(config.authorization_scopes))
+        # Operational visibility is independent of scaling policies.
+        dashboard = cloudwatch.Dashboard(self, "OperationsDashboard", dashboard_name="spip-sandbox")
+        CfnOutput(self, "DashboardUrl", value=f"https://{self.region}.console.aws.amazon.com/cloudwatch/home?region={self.region}#dashboards/dashboard/spip-sandbox")
+        dashboard.add_widgets(
+            cloudwatch.GraphWidget(title="API requests per minute", left=[cloudwatch.Metric(namespace="AWS/ApiGateway", metric_name="Count", dimensions_map={"ApiId": self.api.api_id}, statistic="Sum", period=Duration.minutes(1))]),
+            cloudwatch.GraphWidget(title="API 4xx / 5xx", left=[cloudwatch.Metric(namespace="AWS/ApiGateway", metric_name=name, dimensions_map={"ApiId": self.api.api_id}, statistic="Sum", period=Duration.minutes(1)) for name in ("4xx", "5xx")]),
+            cloudwatch.GraphWidget(title="API and worker memory percent", left=[api_service.metric_memory_utilization(), self.worker_service.metric_memory_utilization()]),
+            cloudwatch.GraphWidget(title="API and worker CPU", left=[api_service.metric_cpu_utilization(), self.worker_service.metric_cpu_utilization()]),
+            cloudwatch.GraphWidget(title="Queue backlog and age", left=[queue.metric_approximate_number_of_messages_visible()], right=[queue.metric_approximate_age_of_oldest_message()]),
+            cloudwatch.GraphWidget(title="ALB response time", left=[balancer.metric_target_response_time(statistic="p95")]),
+            cloudwatch.GraphWidget(title="Database connections", left=[cloudwatch.Metric(namespace="AWS/RDS", metric_name="DatabaseConnections", dimensions_map={"DBInstanceIdentifier": data.database_identifier})]),
+        )
+        from aws_cdk import aws_sns as sns
+        alerts = sns.Topic(self, "OperationalAlerts", display_name="SPIP operational alerts")
+        from aws_cdk import aws_sns_subscriptions as subscriptions
+        for email in config.alert_emails:
+            alerts.add_subscription(subscriptions.EmailSubscription(email))
+        if config.autoscaling_enabled:
+            # An empty queue still emits zeros. Missing samples indicate a broken
+            # scheduler, invocation, or publishing path, not an idle workload.
+            missing_samples = cloudwatch.MathExpression(
+                expression="IF(FILL(visible, -1) < 0, 1, 0) + IF(FILL(inflight, -1) < 0, 1, 0) + IF(FILL(delayed, -1) < 0, 1, 0)",
+                period=Duration.minutes(1), using_metrics={
+                    "visible": queue_depth("Visible"),
+                    "inflight": queue_depth("InFlight"),
+                    "delayed": queue_depth("Delayed"),
+                })
+            for alarm_id, metric, periods, missing in [
+                ("QueueSamplerErrors", sampler.metric_errors(period=Duration.minutes(1), statistic="Sum"), 1, cloudwatch.TreatMissingData.NOT_BREACHING),
+                ("QueueSamplerThrottles", sampler.metric_throttles(period=Duration.minutes(1), statistic="Sum"), 1, cloudwatch.TreatMissingData.NOT_BREACHING),
+                ("QueueSamplerMissing", missing_samples, 5, cloudwatch.TreatMissingData.BREACHING),
+            ]:
+                alarm = cloudwatch.Alarm(self, alarm_id, metric=metric, threshold=1,
+                    comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+                    evaluation_periods=periods, datapoints_to_alarm=periods,
+                    treat_missing_data=missing)
+                alarm.add_alarm_action(alarm_actions.SnsAction(alerts))
+                alarm.add_ok_action(alarm_actions.SnsAction(alerts))
+        for alarm_id, metric, threshold in [
+            ("QueueAge", queue.metric_approximate_age_of_oldest_message(), 300),
+            ("ApiErrors", balancer.metric_http_code_target(elb.HttpCodeTarget.TARGET_5XX_COUNT), 5),
+            ("DeadLetters", cloudwatch.Metric(namespace="AWS/SQS", metric_name="ApproximateNumberOfMessagesVisible", dimensions_map={"QueueName": Fn.select(4, Fn.split("/", data.dlq.queue_url))}, statistic="Maximum"), 1),
+        ]:
+            alarm = cloudwatch.Alarm(self, alarm_id, metric=metric, threshold=threshold,
+                evaluation_periods=2, treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING)
+            alarm.add_alarm_action(alarm_actions.SnsAction(alerts))
+        CfnOutput(self, "OperationalAlertsTopicArn", value=alerts.topic_arn)
         CfnOutput(self, "ApiEndpoint", value=self.api.api_endpoint)
         CfnOutput(self, "ApiTaskDefinitionArn", value=self.api_task.task_definition_arn)
         CfnOutput(self, "WorkerTaskDefinitionArn", value=self.worker_task.task_definition_arn)
         CfnOutput(self, "ApiServiceArn", value=self.api_service.service_arn)
         CfnOutput(self, "WorkerServiceArn", value=self.worker_service.service_arn)
         CfnOutput(self, "ClusterName", value=data.cluster.cluster_name)
+
+    def _grant_tenant_object_access(self, tenant_bucket, key, *, api_read, api_write, worker_read, worker_write):
+        """Grant object Get/Put on the given tenant prefixes and a single
+        prefix-constrained ListBucket, restricting enumeration to application paths; tenant authorization remains application-enforced."""
+        from aws_cdk import aws_iam as iam
+        bucket_arn = tenant_bucket.bucket_arn
+
+        def obj_arns(prefixes):
+            return [f"{bucket_arn}/{p}" for p in prefixes]
+
+        grants = [
+            (self.api_task.task_role, api_read, api_write),
+            (self.worker_task.task_role, worker_read, worker_write),
+        ]
+        for role, read_prefixes, write_prefixes in grants:
+            all_prefixes = sorted(set(read_prefixes) | set(write_prefixes))
+            if read_prefixes:
+                role.add_to_principal_policy(iam.PolicyStatement(
+                    actions=["s3:GetObject*"],
+                    resources=obj_arns(read_prefixes),
+                ))
+            if write_prefixes:
+                role.add_to_principal_policy(iam.PolicyStatement(
+                    actions=[
+                        "s3:PutObject", "s3:PutObjectLegalHold",
+                        "s3:PutObjectRetention", "s3:PutObjectTagging",
+                        "s3:PutObjectVersionTagging", "s3:Abort*",
+                    ],
+                    resources=obj_arns(write_prefixes),
+                ))
+            # One bucket-level List, constrained to the agreed prefixes only.
+            role.add_to_principal_policy(iam.PolicyStatement(
+                actions=["s3:ListBucket"],
+                resources=[bucket_arn],
+                conditions={"StringLike": {"s3:prefix": all_prefixes}},
+            ))
+            # Reading encrypted objects requires the data key.
+            if write_prefixes:
+                key.grant_encrypt_decrypt(role)
+            else:
+                key.grant_decrypt(role)

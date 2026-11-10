@@ -5,7 +5,7 @@ Sandbox opts in with `autoscaling_enabled: true`. Other environments default off
 | Service | Minimum | Sandbox maximum | Scale out | Scale in |
 |---|---:|---:|---|---|
 | API | 1 | 3 | ALB requests per target target-tracking at 300/minute, or average CPU target 60% | Target-tracking policies, 5-minute scale-in cooldown |
-| Worker | 1 | 4 | At least one visible SQS message for two consecutive one-minute periods: add one task, 2-minute cooldown | Visible + in-flight + delayed messages all zero for 15 consecutive minutes: return to one task |
+| Worker | 1 | 4 | One-minute visible SQS maximum: 1–4 messages adds one task; 5+ adds three tasks, 1-minute cooldown | Visible + in-flight + delayed messages all zero for 15 consecutive minutes: return to one task |
 
 Thresholds are initial prototype settings, not measured throughput guarantees. API cooldown for scale out is 60 seconds. Multiple target-tracking policies allow scale-out when either needs it; scale-in requires agreement among scale-in-enabled target policies. Worker scale-out has positive adjustments only; it cannot scale down busy workers. Missing queue metrics are filled with a positive value and the drain alarm treats missing data as non-breaching, so missing metrics do not establish emptiness.
 
@@ -28,3 +28,5 @@ A full workload acceptance run is separate: submit real authenticated jobs, obse
 Rollback: disable autoscaling and redeploy the runtime stack. Confirm actual service desired counts afterwards; removing a scaling target does not necessarily reset the running capacity.
 
 References: [ECS queue-based scaling](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/service-autoscaling-queue.html), [task scale-in protection](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-scale-in-protection.html).
+
+Worker resource sizing and the latest load-test procedure: [LOAD_TESTING.md](LOAD_TESTING.md).

@@ -8,9 +8,9 @@ from infra.backend_data_stack import BackendDataStack
 from infra.backend_runtime_stack import BackendRuntimeStack
 
 
-def stacks(runtime=False, persist_uploads=False, autoscaling_enabled=False):
+def stacks(runtime=False, persist_uploads=False, autoscaling_enabled=False, **resources):
     config = BackendConfig(
-        persist_uploads=persist_uploads, autoscaling_enabled=autoscaling_enabled,
+        persist_uploads=persist_uploads, autoscaling_enabled=autoscaling_enabled, **resources,
         allowed_origins=("https://example.cloudfront.net",),
         api_image="825990809862.dkr.ecr.ap-southeast-1.amazonaws.com/api@sha256:" + "a" * 64,
         worker_image="825990809862.dkr.ecr.ap-southeast-1.amazonaws.com/worker@sha256:" + "b" * 64,
@@ -144,17 +144,30 @@ def test_autoscaling_is_independent_bounded_and_drains_safely():
     targets = items(runtime, "AWS::ApplicationAutoScaling::ScalableTarget")
     assert sorted(t["Properties"]["MaxCapacity"] for t in targets) == [3, 4]
     assert all("DesiredCount" not in s["Properties"] for s in items(runtime, "AWS::ECS::Service"))
-    assert all(t["Properties"]["MinCapacity"] == 1 for t in targets)
+    # API keeps a warm floor of 1; the worker scales to zero when the queue drains.
+    assert sorted(t["Properties"]["MinCapacity"] for t in targets) == [0, 1]
+    api_target = next(t for t in targets if t["Properties"]["MaxCapacity"] == 3)
+    worker_target = next(t for t in targets if t["Properties"]["MaxCapacity"] == 4)
+    assert api_target["Properties"]["MinCapacity"] == 1
+    assert worker_target["Properties"]["MinCapacity"] == 0
     policies = items(runtime, "AWS::ApplicationAutoScaling::ScalingPolicy")
     tracking = [p["Properties"]["TargetTrackingScalingPolicyConfiguration"] for p in policies if p["Properties"]["PolicyType"] == "TargetTrackingScaling"]
     assert {p["PredefinedMetricSpecification"]["PredefinedMetricType"] for p in tracking} == {"ECSServiceAverageCPUUtilization", "ALBRequestCountPerTarget"}
+    # Shorter scale-in cooldown (2 min) so freed capacity is released sooner.
+    assert all(p["ScaleInCooldown"] == 120 and p["ScaleOutCooldown"] == 60 for p in tracking)
     step = [p["Properties"]["StepScalingPolicyConfiguration"] for p in policies if p["Properties"]["PolicyType"] == "StepScaling"]
     assert len(step) == 2
-    assert all(s["ScalingAdjustment"] > 0 for p in step for s in p["StepAdjustments"])
-    drained = next(a["Properties"] for a in items(runtime, "AWS::CloudWatch::Alarm") if a["Properties"]["EvaluationPeriods"] == 15)
-    assert drained["DatapointsToAlarm"] == 15 and drained["Threshold"] == 0
-    assert "ApproximateNumberOfMessagesNotVisible" in json.dumps(drained)
-    assert "ApproximateNumberOfMessagesDelayed" in json.dumps(drained)
+    # Backlog policy only grows capacity; the drained policy sets exact capacity to 0.
+    backlog = next(s for s in step if s["AdjustmentType"] == "ChangeInCapacity")
+    drained_policy = next(s for s in step if s["AdjustmentType"] == "ExactCapacity")
+    assert all(a["ScalingAdjustment"] > 0 for a in backlog["StepAdjustments"])
+    assert all(a["ScalingAdjustment"] == 0 for a in drained_policy["StepAdjustments"])
+    assert drained_policy["Cooldown"] == 300
+    # Drained alarm reacts in ~5 minutes (was 15) but still debounced across datapoints.
+    drained = next(a["Properties"] for a in items(runtime, "AWS::CloudWatch::Alarm") if a["Properties"]["EvaluationPeriods"] == 5)
+    assert drained["DatapointsToAlarm"] == 5 and drained["Threshold"] == 0
+    assert "InFlight" in json.dumps(drained)
+    assert "Delayed" in json.dumps(drained)
 
 
 def test_autoscaling_opt_out_has_no_scaling_resources():
@@ -166,3 +179,97 @@ def test_autoscaling_opt_out_has_no_scaling_resources():
 def test_autoscaling_configuration_rejects_invalid_values(kwargs):
     with pytest.raises(ValueError):
         BackendConfig(**kwargs)
+
+
+def test_large_worker_resources_and_dashboard():
+    _, runtime = stacks(runtime=True, worker_cpu=2048, worker_memory_mib=8192)
+    tasks = [t['Properties'] for t in items(runtime, 'AWS::ECS::TaskDefinition')]
+    assert any(t['Cpu'] == '2048' and t['Memory'] == '8192' for t in tasks)
+    runtime.resource_count_is('AWS::CloudWatch::Dashboard', 1)
+    assert 'API requests per minute' in json.dumps(items(runtime, 'AWS::CloudWatch::Dashboard'))
+
+
+@pytest.mark.parametrize('kwargs', [{'worker_cpu': True}, {'worker_cpu': 512, 'worker_memory_mib': 8192}, {'worker_memory_mib': 1}])
+def test_reject_worker_sizes(kwargs):
+    with pytest.raises(ValueError):
+        BackendConfig(**kwargs)
+
+
+def test_task_roles_cannot_list_across_tenants():
+    """Cloud-config isolation guard (BACKEND_CLOUD_CONTRACT item 183):
+    a shared task role may read/write only its tenant's object prefixes and
+    must never hold an unconstrained s3:ListBucket on the tenant bucket, which
+    would let it enumerate other tenants' directory names under tenants/."""
+    _, runtime = stacks(runtime=True)
+    task_policies = [
+        r for name, r in runtime.find_resources("AWS::IAM::Policy").items()
+        if "TaskRole" in name and "ExecutionRole" not in name
+    ]
+    assert task_policies, "expected API and Worker task-role policies"
+
+    def is_tenant_resource(st):
+        return "TenantData" in json.dumps(st.get("Resource"))
+
+    list_statements = []
+    for policy in task_policies:
+        for st in policy["Properties"]["PolicyDocument"]["Statement"]:
+            actions = st.get("Action")
+            actions = actions if isinstance(actions, list) else [actions]
+            # List/enumerate actions on the TENANT bucket only. The shared
+            # PublicData bucket is not tenant-partitioned, so listing it is
+            # not a cross-tenant leak and is intentionally left unscoped.
+            if any(a in ("s3:ListBucket", "s3:List*", "s3:*") for a in actions) and is_tenant_resource(st):
+                list_statements.append(st)
+
+    assert list_statements, "task roles should retain a (scoped) tenant-bucket ListBucket"
+    for st in list_statements:
+        condition = st.get("Condition") or {}
+        prefixes = condition.get("StringLike", {}).get("s3:prefix")
+        assert prefixes, (
+            "every tenant-bucket List must be constrained by s3:prefix; "
+            "an unscoped ListBucket leaks cross-tenant directory names"
+        )
+        # Prefixes stay inside the agreed tenant layout.
+        for p in (prefixes if isinstance(prefixes, list) else [prefixes]):
+            assert p.startswith("tenants/"), p
+
+    # Object access remains confined to tenant-scoped prefixes (no bare bucket
+    # root), so reads/writes cannot escape the tenants/ hierarchy either.
+    policy_json = json.dumps([p["Properties"]["PolicyDocument"] for p in task_policies])
+    assert "s3:GetObject*" in policy_json
+    for st in (s for p in task_policies for s in p["Properties"]["PolicyDocument"]["Statement"]):
+        actions = st.get("Action")
+        actions = actions if isinstance(actions, list) else [actions]
+        if any(a.startswith("s3:GetObject") or a.startswith("s3:PutObject") for a in actions):
+            resources = st.get("Resource")
+            resources = resources if isinstance(resources, list) else [resources]
+            assert all("tenants/" in json.dumps(r) or "PublicData" in json.dumps(r)
+                       for r in resources), st
+
+
+def test_sampler_monitoring_and_admin_subscriptions():
+    _, runtime = stacks(runtime=True, autoscaling_enabled=True,
+                        alert_emails=("alex.jin@u.nus.edu", "auxane.baptiste@u.nus.edu"))
+    subscriptions = items(runtime, "AWS::SNS::Subscription")
+    assert {s["Properties"]["Endpoint"] for s in subscriptions} == {
+        "alex.jin@u.nus.edu", "auxane.baptiste@u.nus.edu"}
+    assert all(s["Properties"]["Protocol"] == "email" for s in subscriptions)
+    alarms = runtime.find_resources("AWS::CloudWatch::Alarm")
+    monitored = [v["Properties"] for k, v in alarms.items() if k.startswith("QueueSampler")]
+    assert len(monitored) == 3
+    for alarm in monitored:
+        assert alarm["AlarmActions"] == alarm["OKActions"]
+        assert alarm["AlarmActions"] == [subscriptions[0]["Properties"]["TopicArn"]]
+    missing = next(v["Properties"] for k, v in alarms.items() if k.startswith("QueueSamplerMissing"))
+    assert missing["EvaluationPeriods"] == missing["DatapointsToAlarm"] == 5
+    assert missing["TreatMissingData"] == "breaching"
+    metrics = missing["Metrics"]
+    assert {m["MetricStat"]["Metric"]["MetricName"] for m in metrics if "MetricStat" in m} == {"Visible", "InFlight", "Delayed"}
+    assert all(m["MetricStat"]["Period"] == 60 for m in metrics if "MetricStat" in m)
+
+
+def test_alert_email_configuration_rejects_invalid_values():
+    with pytest.raises(ValueError):
+        BackendConfig.from_dict({"alert_emails": "admin@example.com"})
+    with pytest.raises(ValueError):
+        BackendConfig(alert_emails=("invalid",))
