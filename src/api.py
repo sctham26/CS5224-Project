@@ -334,7 +334,7 @@ def post_jobs(
     except JobError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from None
 
-    if not replayed:
+    if not replayed or job.status == "QUEUED":
         try:
             _job_queue.send(envelope_for(job))
         except Exception as exc:  # dispatch failure: job stays QUEUED for a resend
