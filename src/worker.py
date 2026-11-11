@@ -303,7 +303,11 @@ def main(argv: list[str] | None = None) -> int:
                 log.exception("transient failure on job %s", envelope.get("job_id"))
                 continue
 
-            # Only ack once the job is durably terminal in the database.
+            # A duplicate may belong to a worker holding a live lease.
+            # Leave it retryable unless a durable terminal state is confirmed.
+            current = store.get(envelope["tenant_id"], envelope["job_id"])
+            if current is None or current.status not in (SUCCEEDED, FAILED):
+                continue
             client.delete_message(
                 QueueUrl=queue.queue_url, ReceiptHandle=message["ReceiptHandle"]
             )
