@@ -1,4 +1,4 @@
-import { API_BASE_URL } from '../api'
+import { API_BASE_URL, classifyApiError } from '../api'
 import { authenticatedFetch } from '../auth'
 
 export function createIdempotencyKey(prefix = 'spip-upload') {
@@ -66,9 +66,9 @@ function getJsonErrorMessage(response, fallbackMessage) {
 
   switch (response.status) {
     case 401:
-      return 'Authentication is required or your session has expired.'
+      return classifyApiError('HTTP 401').message
     case 403:
-      return 'You are not allowed to upload data for this tenant.'
+      return classifyApiError('HTTP 403').message
     case 404:
       return 'The requested upload resource is unavailable or not accessible.'
     case 409:

@@ -282,9 +282,7 @@ function App() {
                 <p className="api-error">
                   {entitiesError.message}
                 </p>
-                {entitiesError.type === 'auth' ? (
-                  <p>Please sign in and retry.</p>
-                ) : (
+                {entitiesError.type === 'auth' || entitiesError.type === 'forbidden' ? null : (
                   <p>Please check that the Python Analytics API is running on port 8000.</p>
                 )}
               </div>

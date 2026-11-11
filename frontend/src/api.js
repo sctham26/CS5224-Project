@@ -15,12 +15,19 @@ export function classifyApiError(error, fallbackMessage = 'The request could not
   const message = rawMessage.trim() || fallbackMessage
   const lowerMessage = message.toLowerCase()
 
+  if (/\b403\b|forbidden/i.test(message)) {
+    return {
+      type: 'forbidden',
+      message: 'Your account does not have permission to access this data. Please contact your administrator.'
+    }
+  }
+
   if (
-    /401|403|unauthorized|authentication|token expired|login is not configured/i.test(message)
+    /\b401\b|unauthorized|authentication|token expired|login is not configured/i.test(message)
   ) {
     return {
       type: 'auth',
-      message: 'Authentication is required. Please sign in and retry.'
+      message: 'Your session could not be verified. Please sign out and sign in again.'
     }
   }
 
