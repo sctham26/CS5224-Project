@@ -1,0 +1,14 @@
+{
+  "postgres_version": "18.6",
+  "multi_az": true,
+  "visibility_seconds": 900,
+  "max_receive_count": 5,
+  "upload_url_ttl_seconds": 300,
+  "allowed_origins": [
+    "https://d10rc41o4pb0h.cloudfront.net"
+  ],
+  "persist_uploads": false,
+  "autoscaling_enabled": false,
+  "api_max_tasks": 3,
+  "worker_max_tasks": 4
+}

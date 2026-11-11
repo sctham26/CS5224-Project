@@ -1,0 +1,185 @@
+name: Frontend checks and AWS deployment
+
+on:
+  push:
+    branches: [cloud-config, main, integration]
+    paths: ['frontend/**', 'infra/**', 'scripts/**', 'tests/**', '.github/workflows/frontend.yml']
+  pull_request:
+    branches: [cloud-config, main, integration]
+    paths: ['frontend/**', 'infra/**', 'scripts/**', 'tests/**', '.github/workflows/frontend.yml']
+  workflow_dispatch:
+    inputs:
+      frontend_source_ref:
+        description: Frontend source branch (feature branches are check-only)
+        type: choice
+        default: integration
+        options:
+          - integration
+          - feature/frontend-error-handling
+          - feature/real-csv-upload
+          - feature/insufficient-peer-display
+      deploy:
+        description: Publish integration to the existing shared test site
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  infrastructure-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: infra/package-lock.json
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: '0.13.1'
+          python-version: '3.12'
+          enable-cache: true
+          cache-dependency-glob: infra/uv.lock
+      - run: uv sync --locked
+        working-directory: infra
+      - run: uv run --locked pytest -q
+        working-directory: infra
+      - run: python -m unittest -v tests.test_deploy_frontend tests.test_verify_frontend tests.test_frontend_source tests.test_backend_release_guard tests.test_release_capacity tests.test_load_test tests.test_membership_command
+      - run: npm ci
+        working-directory: infra
+      - run: npx cdk synth --strict --quiet
+        working-directory: infra
+        env:
+          CDK_DEFAULT_ACCOUNT: '825990809862'
+          CDK_DEFAULT_REGION: ap-southeast-1
+          AWS_REGION: ap-southeast-1
+          AWS_DEFAULT_REGION: ap-southeast-1
+      - name: Synthesize independent login module without AWS credentials
+        run: npx cdk synth AuthStack --strict --quiet --no-lookups -c enable_auth=true
+        working-directory: infra
+        env:
+          CDK_DEFAULT_ACCOUNT: '825990809862'
+          AWS_REGION: ap-southeast-1
+          AWS_DEFAULT_REGION: ap-southeast-1
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Select frontend source without publishing cloud-config's historical copy
+        id: selection
+        run: python scripts/frontend_source.py
+        env:
+          FRONTEND_SOURCE_REF: ${{ inputs.frontend_source_ref || 'integration' }}
+          PUBLISH_FRONTEND: ${{ inputs.deploy || false }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ steps.selection.outputs.ref }}
+          path: app-source
+          persist-credentials: false
+      - name: Record the resolved application commit
+        id: source
+        run: echo "sha=$(git -C app-source rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: app-source/frontend/package-lock.json
+      - run: npm ci
+        working-directory: app-source/frontend
+      - run: npm run lint
+        working-directory: app-source/frontend
+      - run: npm test
+        working-directory: app-source/frontend
+      - run: npm run build
+        working-directory: app-source/frontend
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || '/api' }}
+          VITE_AUTH_ISSUER: ${{ vars.VITE_AUTH_ISSUER }}
+          VITE_AUTH_CLIENT_ID: ${{ vars.VITE_AUTH_CLIENT_ID }}
+          VITE_AUTH_DOMAIN: ${{ vars.VITE_AUTH_DOMAIN }}
+      - name: Record source provenance with the build
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          python - <<'PYCODE'
+          import json, os
+          from pathlib import Path
+          Path('app-source/frontend/dist/build-source.json').write_text(json.dumps({
+              'source_commit': os.environ['SOURCE_SHA'],
+              'workflow_commit': os.environ['GITHUB_SHA']}))
+          PYCODE
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: frontend-${{ github.run_id }}-${{ github.run_attempt }}
+          path: app-source/frontend/dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    needs: [infrastructure-checks, frontend-build]
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && inputs.deploy &&
+       inputs.frontend_source_ref == 'integration' &&
+       (github.ref == 'refs/heads/cloud-config' || github.ref == 'refs/heads/main'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Main releases and explicit integration previews share one test site.
+    concurrency:
+      group: spip-frontend-dev
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      FRONTEND_SOURCE_SHA: ${{ needs.frontend-build.outputs.source_sha }}
+      AWS_REGION: ap-southeast-1
+      AWS_ACCOUNT_ID: '825990809862'
+      FRONTEND_BUCKET_NAME: ${{ vars.FRONTEND_BUCKET_NAME }}
+      CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+      FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+      DEPLOY_ROLE_ARN: ${{ vars.FRONTEND_DEPLOY_ROLE_ARN }}
+    steps:
+      - name: Require the one-time AWS setup
+        shell: bash
+        run: |
+          for name in FRONTEND_BUCKET_NAME CLOUDFRONT_DISTRIBUTION_ID FRONTEND_URL DEPLOY_ROLE_ARN; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing repository variable $name. See docs/FRONTEND_DEPLOYMENT.md."
+              exit 1
+            fi
+          done
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: frontend-${{ github.run_id }}-${{ github.run_attempt }}
+          path: frontend/dist/
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          allowed-account-ids: '825990809862'
+          role-session-name: frontend-${{ github.run_id }}
+          role-duration-seconds: 1800
+      - name: Publish assets, HTML, and release metadata
+        run: python scripts/deploy_frontend.py
+      - name: Verify the published release
+        run: python scripts/verify_frontend.py "$FRONTEND_URL" "$FRONTEND_SOURCE_SHA"
+      - name: Record release
+        shell: bash
+        run: |
+          printf 'Website: %s\n\nCommit: `%s`\n' "$FRONTEND_URL" "$FRONTEND_SOURCE_SHA" >> "$GITHUB_STEP_SUMMARY"

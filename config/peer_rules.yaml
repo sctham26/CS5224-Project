@@ -1,0 +1,17 @@
+# Peer-group fallback rules — evaluated top to bottom, first rule meeting
+# min_peer_size wins. Every rule implicitly preserves compatibility:
+# same scope, same reporting period, same metric availability, canonical unit.
+#
+# Order follows the team's output contract (PR #1):
+# "If n < 5, fallback rules trigger region relaxation."
+min_peer_size: 5
+
+fallback_rules:
+  - name: same_property_type_and_region
+    match: [property_type, region]
+  - name: same_region
+    match: [region]
+  - name: same_property_type
+    match: [property_type]
+  - name: same_scope_all
+    match: []

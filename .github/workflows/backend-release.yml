@@ -1,0 +1,77 @@
+name: Publish backend application
+on:
+  workflow_call:
+    inputs:
+      cloud_ref:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  release:
+    if: github.ref == 'refs/heads/backend-analysis' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    concurrency:
+      group: spip-backend-sandbox-release
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ap-southeast-1
+      AWS_DEFAULT_REGION: ap-southeast-1
+      SOURCE_SHA: ${{ github.sha }}
+      RELEASE_SUFFIX: ${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.cloud_ref }}
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          path: backend-source
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e
+        with:
+          version: '0.13.1'
+          python-version: '3.12'
+      - name: Require reviewed schema and dependencies
+        run: python scripts/check_backend_release.py backend-source
+      - name: Build immutable backend and test it before obtaining AWS credentials
+        run: >-
+          uv run --project backend_cloud --locked python scripts/build_backend_image.py
+          --ref "$SOURCE_SHA" --source-repo backend-source --build-only --test
+          --tag-suffix "$RELEASE_SUFFIX"
+          --repository 825990809862.dkr.ecr.ap-southeast-1.amazonaws.com/spip-backend
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        with:
+          role-to-assume: arn:aws:iam::825990809862:role/spip-backend-github-release
+          aws-region: ap-southeast-1
+          allowed-account-ids: '825990809862'
+          role-session-name: backend-${{ github.run_id }}
+          role-duration-seconds: 3600
+      - name: Push the tested image
+        run: >-
+          uv run --project backend_cloud --locked python scripts/build_backend_image.py
+          --ref "$SOURCE_SHA" --source-repo backend-source --profile ''
+          --tag-suffix "$RELEASE_SUFFIX"
+          --repository 825990809862.dkr.ecr.ap-southeast-1.amazonaws.com/spip-backend
+      - name: Release through fixed CloudFormation image parameters
+        run: python scripts/release_backend.py infra/backend-image.json --release-id "gh-$RELEASE_SUFFIX"
+      - name: Verify public API transport and negative authentication
+        run: python scripts/verify_api.py
+      - name: Record immutable release provenance
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: backend-release-${{ github.run_id }}-${{ github.run_attempt }}
+          path: infra/backend-image.json
+          retention-days: 30
+          if-no-files-found: ignore
+      - name: Write release summary
+        if: success()
+        run: |
+          echo 'Backend source and deployed immutable image:' >> "$GITHUB_STEP_SUMMARY"
+          cat infra/backend-image.json >> "$GITHUB_STEP_SUMMARY"

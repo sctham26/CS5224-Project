@@ -1,2 +1,15 @@
-pandas>=2.2,<4
+pydantic>=2
+pandas>=2
+PyYAML>=6
+fastapi>=0.110
+uvicorn>=0.29
+python-multipart>=0.0.9
+pytest>=8
+httpx>=0.27
+# Cloud path only: Cognito access-token verification and PostgreSQL reads.
+PyJWT[crypto]>=2.8
+psycopg[binary]>=3.1
+# Cloud path only: S3 presigning + SQS dispatch (API) and the ingestion worker.
+boto3>=1.34
+# Data preparation (prepare_data.py)
 openpyxl>=3.1,<4

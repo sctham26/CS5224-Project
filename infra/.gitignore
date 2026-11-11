@@ -1,0 +1,15 @@
+*.swp
+__pycache__
+.pytest_cache
+.venv
+*.egg-info
+
+# CDK asset staging directory
+.cdk.staging
+cdk.out
+auth-outputs.json
+backend-outputs.json
+operations-outputs.json
+runtime-outputs.json
+backend-image.json
+release-outputs.json

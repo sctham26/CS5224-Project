@@ -1,0 +1,23 @@
+name: Deploy backend sandbox
+on:
+  push:
+    branches: [backend-analysis]
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  guard:
+    if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/backend-analysis'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail loudly on dispatch from a non-release branch
+        run: |
+          echo "::error::workflow_dispatch only releases from backend-analysis. Select that branch in the 'Run workflow' dialog, or push to backend-analysis instead."
+          exit 1
+  deploy:
+    needs: guard
+    if: always() && !failure() && !cancelled()
+    uses: sctham26/CS5224-Project/.github/workflows/backend-release.yml@50bbd81203c61d80f37e973d25a1fdc51eb8fd96
+    with:
+      cloud_ref: 50bbd81203c61d80f37e973d25a1fdc51eb8fd96

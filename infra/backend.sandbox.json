@@ -1,0 +1,34 @@
+{
+  "postgres_version": "18.6",
+  "multi_az": false,
+  "visibility_seconds": 900,
+  "max_receive_count": 5,
+  "upload_url_ttl_seconds": 300,
+  "worker_command": [
+    "python",
+    "src/worker.py"
+  ],
+  "allowed_origins": [
+    "https://d10rc41o4pb0h.cloudfront.net"
+  ],
+  "jwt_issuer": "https://cognito-idp.ap-southeast-1.amazonaws.com/ap-southeast-1_frOvkBoAN",
+  "jwt_audience": [
+    "6apgo9j7mard1vbfvlaqekcohc"
+  ],
+  "authorization_scopes": [
+    "spip/access"
+  ],
+  "api_image": "825990809862.dkr.ecr.ap-southeast-1.amazonaws.com/spip-backend@sha256:783dfcb73834f21846ac602eaab474ebc6c5baff3531b566a98dc77b96b10ce1",
+  "worker_image": "825990809862.dkr.ecr.ap-southeast-1.amazonaws.com/spip-backend@sha256:783dfcb73834f21846ac602eaab474ebc6c5baff3531b566a98dc77b96b10ce1",
+  "job_lease_seconds": 840,
+  "persist_uploads": true,
+  "autoscaling_enabled": true,
+  "api_max_tasks": 3,
+  "worker_max_tasks": 4,
+  "worker_cpu": 2048,
+  "worker_memory_mib": 8192,
+  "alert_emails": [
+    "alex.jin@u.nus.edu",
+    "auxane.baptiste@u.nus.edu"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "account": "825990809862",
+  "region": "ap-southeast-1",
+  "user_pool_id": "ap-southeast-1_frOvkBoAN",
+  "assignments": [
+    {"email": "alex.jin@u.nus.edu", "subject": "e9caf58c-7091-7041-fd92-01ac1f99d708", "group": "spip-admin"},
+    {"email": "auxane.baptiste@u.nus.edu", "subject": "e93ad5bc-70e1-70ae-9c8d-86768519ce06", "group": "spip-admin"},
+    {"email": "e1554354@u.nus.edu", "subject": "099a652c-e071-7083-2d16-a770ea0c9557", "group": "spip-tester"},
+    {"email": "songsifan@u.nus.edu", "subject": "794a557c-4041-70f7-98e2-683055ab6357", "group": "spip-backend"}
+  ]
+}
