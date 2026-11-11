@@ -17,16 +17,19 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import tempfile
 import threading
 import time
 from collections import OrderedDict
+from typing import Literal
+from uuid import UUID
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from auth import AuthError, Authenticator, InvalidToken, NoMembership, Principal, build_authenticator
 from contract import (
@@ -44,6 +47,8 @@ from jobs import (
     owns_upload_key,
 )
 from schemas import ReportingScope
+from rbac import permissions_for, role_for
+from admin_access import CognitoDirectory, MembershipAdministration, AdminUnavailable, ProtectedAdministrator
 
 METRICS = os.environ.get("SPIP_METRICS", "config/metrics.yaml")
 RULES = os.environ.get("SPIP_RULES", "config/peer_rules.yaml")
@@ -65,7 +70,7 @@ PREFIX = os.environ.get("SPIP_API_PREFIX", "").rstrip("/")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
 )
 
@@ -351,3 +356,97 @@ def get_job(job_id: str, principal: Principal = Depends(get_principal)) -> JSONR
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
     return JSONResponse(job.public())
+
+# Privileged routes are an additive proposal; existing data routes remain tenant-scoped.
+_directory = CognitoDirectory()
+_membership_administration = MembershipAdministration()
+_access_log = logging.getLogger("spip.authorization")
+
+
+def require_permission(permission):
+    def guard(principal: Principal = Depends(get_principal)):
+        if permission not in permissions_for(principal.groups):
+            raise HTTPException(status_code=403, detail="insufficient application permission")
+        return principal
+    return guard
+
+
+class RoleUpdate(BaseModel):
+    role: Literal["backend", "tester", "customer"]
+
+
+class MembershipUpdate(BaseModel):
+    tenant_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+    active: bool = Field(strict=True)
+
+
+def _admin_call(principal, action, target, call):
+    try:
+        result = call()
+    except ProtectedAdministrator as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    except AdminUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
+    except Exception:
+        # No DSNs, tokens, request bodies or AWS exception text in HTTP responses.
+        _access_log.warning("admin_action_failed action=%s actor=%s target=%s", action, principal.subject, target)
+        raise HTTPException(status_code=503, detail="Administrative operation unavailable") from None
+    _access_log.info("admin_action action=%s actor=%s target=%s", action, principal.subject, target)
+    return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
+
+@app.get(f"{PREFIX}/auth/me")
+def current_permissions(principal: Principal = Depends(get_principal)):
+    return JSONResponse({"subject": principal.subject, "tenant_id": principal.tenant_id,
+        "role": role_for(principal.groups), "permissions": sorted(permissions_for(principal.groups))},
+        headers={"Cache-Control": "no-store"})
+
+
+@app.get(f"{PREFIX}/ops/status")
+def operations_status(principal: Principal = Depends(require_permission("ops:read"))):
+    with _analysis_lock:
+        entries = sum(key[1] == principal.tenant_id for key in _analysis_cache)
+    return JSONResponse({"tenant_id": principal.tenant_id, "cache_scope": "current_api_process",
+        "analysis_cache_entries": entries, "analysis_cache_ttl_seconds": ANALYSIS_TTL,
+        "upload_pipeline_configured": _uploader is not None and _job_queue is not None},
+        headers={"Cache-Control": "no-store"})
+
+
+@app.post(f"{PREFIX}/ops/cache/invalidate")
+def invalidate_cache(principal: Principal = Depends(require_permission("cache:invalidate"))):
+    invalidate = getattr(_datasource, "invalidate", None)
+    if invalidate is None:
+        raise HTTPException(status_code=503, detail="Datasource invalidation is not supported")
+    data_entries = invalidate(principal.tenant_id)
+    with _analysis_lock:
+        keys = [key for key in _analysis_cache if key[1] == principal.tenant_id]
+        for key in keys:
+            del _analysis_cache[key]
+    _access_log.info("cache_invalidated actor=%s tenant=%s", principal.subject, principal.tenant_id)
+    return JSONResponse({"tenant_id": principal.tenant_id, "cache_scope": "current_api_process",
+        "data_entries_removed": data_entries, "analysis_entries_removed": len(keys)},
+        headers={"Cache-Control": "no-store"})
+
+
+@app.get(f"{PREFIX}/admin/users")
+def admin_users(next_token: str | None = Query(default=None, max_length=4096),
+                principal: Principal = Depends(require_permission("users:read"))):
+    return _admin_call(principal, "users:list", "directory", lambda: _directory.list_users(next_token))
+
+
+@app.put(f"{PREFIX}/admin/users/{{subject}}/role")
+def admin_set_role(subject: UUID, payload: RoleUpdate,
+                   principal: Principal = Depends(require_permission("roles:write"))):
+    if str(subject) == principal.subject:
+        raise HTTPException(status_code=409, detail="Cannot change your own administrator role")
+    return _admin_call(principal, "roles:write", str(subject),
+        lambda: _directory.set_role(str(subject), payload.role))
+
+
+@app.put(f"{PREFIX}/admin/memberships/{{subject}}")
+def admin_set_membership(subject: UUID, payload: MembershipUpdate,
+                         principal: Principal = Depends(require_permission("memberships:write"))):
+    if str(subject) == principal.subject:
+        raise HTTPException(status_code=409, detail="Cannot change your own administrator membership")
+    return _admin_call(principal, "memberships:write", str(subject),
+        lambda: _membership_administration.set_membership(str(subject), payload.tenant_id, payload.active))
