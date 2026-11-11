@@ -16,18 +16,22 @@ def test_operator_tasks_keep_import_and_migration_credentials_separate_and_decry
     app.synth()
     template = Template.from_stack(ops)
     tasks = list(template.find_resources("AWS::ECS::TaskDefinition").values())
-    assert len(tasks) == 2
+    assert len(tasks) == 3
     for task in tasks:
         container = task["Properties"]["ContainerDefinitions"][0]
         names = {v["Name"] for v in container["Secrets"]}
         if container["Name"] == "PublicImport":
             assert names == {"SPIP_PUBLIC_DB_CREDENTIALS"}
+        elif container["Name"] == "Membership":
+            assert names == {"SPIP_TENANT_DB_CREDENTIALS"}
+            assert container["EntryPoint"] == ["python", "/opt/spip-cloud/operations.py", "membership"]
+            assert container["Command"] == ["--help"]
         else:
             assert container["Name"] == "Migration"
             assert names == {"SPIP_PUBLIC_DB_CREDENTIALS", "SPIP_TENANT_DB_CREDENTIALS"}
         assert "SPIP_ADMIN_CREDENTIALS" not in names
     policies = template.find_resources("AWS::IAM::Policy")
-    assert len(policies) == 2
+    assert len(policies) == 3
     for policy in policies.values():
         statements = policy["Properties"]["PolicyDocument"]["Statement"]
         decrypt = [v for v in statements if v["Action"] == "kms:Decrypt"]

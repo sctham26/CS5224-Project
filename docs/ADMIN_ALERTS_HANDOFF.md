@@ -43,12 +43,13 @@ No MapReduce or analytical rewrite is included in this change.
 
 ## Backend coordination: upload persistence and authorization
 
-`persist_uploads=false` is deliberate. Raw CSV and result JSON still persist in
-S3; uploaded observations are not written back to PostgreSQL. To enable it,
+`persist_uploads=true` is now enabled by project-owner request (2026-11-10).
+Raw CSV and result JSON remain in S3. Supported uploads are also written to
+tenant PostgreSQL observations. For application acceptance,
 backend/data owners should verify migrations, INSERT/UPDATE grants for the app
 role, tenant RLS, unique/upsert keys, retry idempotency and cache invalidation.
-They should explicitly approve the writeback behavior; cloud operations then
-enables the flag and deploys. A successful one-off report alone is not proof of
+Cloud operations owns deployment and runtime database permissions; backend/data
+owners verify writeback semantics and application acceptance. A successful one-off report alone is not proof of
 correct observation persistence.
 
 Cognito groups and database membership are separate. For the final demo, cloud
@@ -61,3 +62,24 @@ Do not grant a shared tenant automatically based only on an email or group name.
 
 Authenticated end-to-end release tests remain owned by the designated team
 member. This change does not replace those tests.
+
+### Writeback activation verification — 2026-11-10
+
+Deployed `persist_uploads=true` to BackendRuntimeStack; the worker service is
+stable on task definition `BackendRuntimeStackWorkerTaskB864145B:21` with
+`SPIP_PERSIST_UPLOADS=1`. API and worker image digests were preserved.
+
+An isolated one-off task using this worker definition called the existing
+`worker.persist_upload` with two valid baseline-format observations:
+
+- Tenant: `writeback-check-98775c53fccd` (test-only, not assigned to a user).
+- First write: 2 observations committed.
+- Repeated write: still 2 observations, confirming the upsert path for this sample.
+- A different tenant context could see 0 of those observations.
+- Test task: `3d2e44a71b6c438386a21aea7551e260`.
+
+The two test observations are retained in their isolated tenant for audit.
+This verifies deployed write permissions, the sample upsert and RLS read isolation;
+it is not a browser upload E2E test or exhaustive validation of all CSV formats.
+Unsupported formats can still be skipped by backend persistence logic.
+Infrastructure tests: 45 passed. Public API health/negative-auth checks passed.
