@@ -29,7 +29,7 @@ The first real ceiling is `PostgresDataSource`, which reads the whole baseline p
 
 The strongest evidence is a contract bug found and fixed. A too-small peer group used to be reported as "NONE" with the flag cleared, telling the frontend a building was fine when it had never been compared. It now returns null across benchmark, gap type and flag — and that behaviour was reproduced on the live pipeline, not just in tests.
 
-- 116 of 116 pytest cases across 14 files pass locally (6.4 s); `scripts/verify_contract.py` passes 12 of 12 contract checks.
+- 157 of 157 pytest cases across 17 files pass locally; `scripts/verify_contract.py` passes 12 of 12 contract checks.
 - Live: `/api/health` 200 and business routes 401 without a token. With a real Cognito token on 2026-10-30, a three-entity CSV below the minimum cohort ran end to end and returned null with `fallback_reason: insufficient_peers`, while undisclosed metrics came back as disclosure gaps.
 - Real-data check: uploading only `SG_228218_LATEST_6` for 2024 yields cohort 239, median EUI 138.746, percentile 60.25, gap NONE.
 - The manual correctness workbook (`evaluation/correctness_SG.xlsx`) is committed and recomputes the same quantities by hand. Page-level browser end-to-end testing is still absent, so no claim of a full user-flow evaluation is made here.
@@ -46,7 +46,7 @@ Repository: `spip-analytics/` (public URL to be added by the team). Core modules
 
 ```powershell
 pip install -r requirements.txt
-python -m pytest -q                 # 116 tests
+python -m pytest -q                 # 157 tests
 python -m uvicorn api:app --app-dir src --port 8000
 ```
 

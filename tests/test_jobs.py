@@ -230,3 +230,83 @@ def test_job_queue_sends_envelope_when_client_injected():
     queue = JobQueue("https://queue.invalid", client=FakeClient())
     queue.send({"job_id": "j1"})
     assert sent == [("https://queue.invalid", {"job_id": "j1"})]
+
+
+def test_replay_after_terminal_state_does_not_redispatch(pipeline):
+    store, _, queue = pipeline
+    job_id = _create(client).json()["job_id"]
+    store.finish(store.get("tenant_a", job_id), SUCCEEDED, result={"ok": True}, error=None)
+
+    _create(client)
+    assert len(queue.sent) == 1  # already finished: nothing to re-send
+
+
+class _ScriptedCursor:
+    """Cursor whose fetchone() returns the value scripted for the last execute()."""
+
+    def __init__(self, script):
+        self.script = list(script)
+        self.calls = []
+        self.result = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def execute(self, sql, params=None):
+        self.calls.append(sql)
+        self.result = self.script.pop(0) if self.script else None
+
+    def fetchone(self):
+        return self.result
+
+
+class _ScriptedConnection:
+    def __init__(self, cur):
+        self.cur = cur
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def cursor(self):
+        return self.cur
+
+
+def _store_scripted(cursor):
+    store = jobs_mod.PostgresJobStore("postgresql://unused")
+    store._connect = lambda: _ScriptedConnection(cursor)
+    return store
+
+
+def _winner_row(request_hash):
+    return (
+        "job_x", "tenant_a", QUEUED, "PUB_BUILD", "tenants/tenant_a/uploads/k.csv",
+        request_hash, "asset", 2024, None, None, 0, None, "t0", "t0",
+    )
+
+
+def test_concurrent_identical_insert_returns_the_winner():
+    # set_config, SELECT (miss), INSERT (loses the race), SELECT (winner).
+    cur = _ScriptedCursor([None, None, None, _winner_row("hash")])
+    job, replayed = _store_scripted(cur).create_or_get(
+        "tenant_a", "k", "hash",
+        entity_id="PUB_BUILD", upload_key="tenants/tenant_a/uploads/k.csv",
+        scope="asset", reporting_year=2024,
+    )
+    assert replayed is True and job.job_id == "job_x"
+    assert any("ON CONFLICT" in sql for sql in cur.calls)
+
+
+def test_concurrent_insert_with_a_different_hash_conflicts():
+    cur = _ScriptedCursor([None, None, None, _winner_row("other-hash")])
+    with pytest.raises(jobs_mod.IdempotencyConflict):
+        _store_scripted(cur).create_or_get(
+            "tenant_a", "k", "hash",
+            entity_id="PUB_BUILD", upload_key="tenants/tenant_a/uploads/k.csv",
+            scope="asset", reporting_year=2024,
+        )
